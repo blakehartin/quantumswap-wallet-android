@@ -124,7 +124,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_toEndOf="@id/imageButton_receive_copy_clipboard"
                                 android:layout_centerVertical="true"
-                                android:textColor="#000000"
+                                android:textColor="@color/colorCommon6"
                                 android:textSize="14dp"
                                 android:visibility="gone"
                                 android:layout_marginStart="4dp" />

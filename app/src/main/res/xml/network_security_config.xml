@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Network Security Configuration for QuantumCoin Wallet.
+  Network Security Configuration for QuantumSwap Wallet.
 
   Goals:
     - Disallow all cleartext traffic in release builds.

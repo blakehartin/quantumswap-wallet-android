@@ -98,7 +98,7 @@ enum StablecoinImpersonatorFilter {
     /// The list is intentionally small. Adding a pattern is
     /// cheap; removing one risks surfacing impersonator tokens.
     /// Stays byte-for-byte aligned with the Android counterpart at
-    /// `app/src/main/java/com/quantumcoinwallet/app/tokens/StablecoinImpersonatorFilter.java`.
+    /// `app/src/main/java/com/quantumswap/app/tokens/StablecoinImpersonatorFilter.java`.
     static let patterns: [String] = [
         "usd", "dai", "tether", "stable", "stablecoin",
         "frax", "fdusd", "lusd", "tusd", "gusd", "pyusd",

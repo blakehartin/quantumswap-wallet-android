@@ -1,5 +1,40 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-     <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <!--
+        QuantumSwap ships DARK-ONLY (Quantum Violet). The parent is the
+        non-DayNight dark Material theme so the app renders identically
+        regardless of the system light/dark setting, and there is no
+        values-night/ overlay. forceDarkAllowed=false stops the OS
+        force-dark pass from re-tinting our already-dark surfaces.
+    -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.NoActionBar">
+
+        <item name="colorPrimary">@color/quantumAccent</item>
+        <item name="colorPrimaryVariant">@color/quantumAccentSoft</item>
+        <item name="colorSecondary">@color/quantumCyan</item>
+        <item name="colorSecondaryVariant">@color/quantumTeal</item>
+        <item name="colorAccent">@color/quantumAccent</item>
+        <item name="colorSurface">@color/quantumPanel</item>
+        <item name="colorOnSurface">@color/quantumText</item>
+        <item name="colorOnPrimary">@color/colorWhite</item>
+        <item name="colorOnSecondary">@color/colorBlock</item>
+        <item name="android:colorBackground">@color/quantumBg</item>
+        <item name="android:windowBackground">@color/quantumBg</item>
+        <item name="android:textColor">@color/quantumText</item>
+        <item name="android:textColorPrimary">@color/quantumText</item>
+        <item name="android:textColorSecondary">@color/quantumMuted</item>
+        <item name="android:statusBarColor">@color/quantumBg</item>
+        <item name="android:navigationBarColor">@color/quantumBg</item>
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+
+        <!--
+            Poppins everywhere, matching the desktop -body-font. The
+            relay_poppins_* font resources shipped with the original
+            design system; pointing the theme-level fontFamily at the
+            regular cut makes every widget that doesn't set an explicit
+            style inherit Poppins.
+        -->
+        <item name="android:fontFamily">@font/relay_poppins_regular</item>
+        <item name="fontFamily">@font/relay_poppins_regular</item>
 
         <!--
             See styles.xml > AppButtonPlain for the full rationale.
@@ -9,8 +44,8 @@
             drawable as-drawn, regardless of whether the button is
             hosted by the activity or by an AlertDialog. Without this
             override the Unlock-dialog buttons render in a noticeably
-            different shade from the same green-pill drawable used by
-            the Next / Add / Save / Send buttons in the host fragments.
+            different shade from the same pill drawable used by the
+            Next / Add / Save / Send buttons in the host fragments.
         -->
         <item name="materialButtonStyle">@style/AppButtonPlain</item>
 

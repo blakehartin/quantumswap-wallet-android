@@ -48,28 +48,34 @@
                         android:endX="288.75"
                         android:endY="112"
                         >
+                        <!--
+                            Quantum Violet banner sweep: accent violet
+                            fading through soft violet into cyan, per
+                            desktop theme-quantum.css (accent ->
+                            accent-soft -> accent-2).
+                        -->
                         <item
-                            android:color="#80421096"
+                            android:color="#806C3BFF"
                             android:offset="0"
                             />
                         <item
-                            android:color="#4059D6F2"
+                            android:color="#4D9B73FF"
                             android:offset="0.245"
                             />
                         <item
-                            android:color="#26EC6B7C"
+                            android:color="#2600E5FF"
                             android:offset="0.495"
                             />
                         <item
-                            android:color="#0DB5498C"
+                            android:color="#1400E5FF"
                             android:offset="0.755"
                             />
                         <item
-                            android:color="#0D903690"
+                            android:color="#0D00E5FF"
                             android:offset="1"
                             />
                         <item
-                            android:color="#0D903690"
+                            android:color="#0D00E5FF"
                             android:offset="1"
                             />
                     </gradient>

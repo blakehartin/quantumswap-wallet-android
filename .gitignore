@@ -78,3 +78,23 @@ vendor/
 .project
 output/
 node_modules/
+
+# Local environment and service configuration
+.env
+.env.*
+google-services.json
+
+# Signing keys and credentials
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Additional generated build and IDE output
+**/build/
+*.aab
+.kotlin/
+.vscode/

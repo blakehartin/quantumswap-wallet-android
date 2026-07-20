@@ -1524,7 +1524,7 @@
                                     android:id="@+id/textView_reveal_seed_words_view_copy_link"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:textColor="#2196F3"
+                                    android:textColor="@color/quantumCyan"
                                     android:textSize="16dp"
                                     android:clickable="true"
                                     android:focusable="true"

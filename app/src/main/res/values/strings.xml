@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">Quantum Coin Wallet</string>
+    <string name="app_name" translatable="false">QuantumSwap Wallet</string>
     <string name="empty">empty1</string>
 
 
@@ -23,7 +23,7 @@
     <string name="password_toggle_content_description">Show or hide password</string>
 
     <!-- Home -->
-    <string name="home_title">QUANTUM COIN WALLET</string>
+    <string name="home_title">QUANTUMSWAP WALLET</string>
     <string name="home_total_balance_title">Total Balance</string>
 
     <!-- Home new fragment -->
@@ -84,12 +84,12 @@
     <string name="home_safety_quiz_option_4_2">No one</string>
     <string name="home_safety_quiz_button_next_2">Next</string>
 
-    <string name="home_safety_quiz_message">Please select an option.</string>string>
+    <string name="home_safety_quiz_message">Please select an option.</string>
 
-    <string name="home_safety_quiz_message_correct_1">This is correct. You should only send QuantumCoin to this wallet.</string>string>
+    <string name="home_safety_quiz_message_correct_1">This is correct. You should only send QuantumCoin to this wallet.</string>
     <string name="home_safety_quiz_quiz_message_wrong_1">That is wrong! Please read the question carefully and try again.</string>
 
-    <string name="home_safety_quiz_message_correct_2">This is correct. No one can help you recover your wallet or password.</string>string>
+    <string name="home_safety_quiz_message_correct_2">This is correct. No one can help you recover your wallet or password.</string>
     <string name="home_safety_quiz_quiz_message_wrong_2">Your answer is wrong! Please read the question carefully and try again.</string>
 
     <string name="home_set_wallet_title">Set Wallet Password</string>
@@ -163,10 +163,10 @@
 
     <!-- Unlock dialog fragment -->
     <string name="unlock_title">Unlock Wallet</string>
-    <string name="unlock_description">Enter the password used for your wallet</string>string>
+    <string name="unlock_description">Enter the password used for your wallet</string>
     <string name="unlock_password_description">Enter password</string>
-    <string name="unlock_button_unlock_title">Unlock</string>string>
-    <string name="unlock_button_close_title">Close</string>string>
+    <string name="unlock_button_unlock_title">Unlock</string>
+    <string name="unlock_button_close_title">Close</string>
 
     <string name="unlock_password_empty_message">Enter the password!</string>
     <string name="unlock_password_wrong_message">Could not unlock the wallet with the password. Please try again!</string>
@@ -269,11 +269,11 @@
     <string name="downloadAgain">Download Again</string>
 
     <!-- notification -->
-    <string name="notification_channel_id">QuantumCoinWallet</string>
-    <string name="notification_channel_name">Quantum Coin Wallet</string>
+    <string name="notification_channel_id">QuantumSwapWallet</string>
+    <string name="notification_channel_name">QuantumSwap Wallet</string>
     <string name="notification_channel_description">You are about to create to a quantum resistant wallet.</string>
 
-    <string name="notification_title">Quantum Coin</string>
+    <string name="notification_title">QuantumSwap</string>
     <string name="notification_description">Balance changed in wallet</string>
 
 </resources>

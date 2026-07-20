@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.quantumcoin.app'
+    namespace 'com.quantumswap.app'
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.quantumcoin.app"
+        applicationId "com.quantumswap.app"
         // Strict TLS 1.3 enforcement: minSdk is 29 (Android 10) so the
         // platform's `SSLEngine` ships with native TLS 1.3 support.
         // The TlsPinning layer installs an explicit TLS-1.3-only
@@ -78,7 +78,7 @@ android {
             variant.outputs.all { output ->
                 def versionName = variant.versionName
                 def buildType = variant.buildType.name
-                output.outputFileName = "QuantumCoin-wallet-${versionName}-${buildType}.apk"
+                output.outputFileName = "QuantumSwap-wallet-${versionName}-${buildType}.apk"
             }
         }
     }
@@ -104,7 +104,7 @@ android {
 // ---------------------------------------------------------------
 // embedBundleHash
 // Re-computes the SHA-256 of the shipping JS bundle bytes
-// (`app/src/main/assets/quantumcoin-bundle.js`) at build time and
+// (`app/src/main/assets/quantumswap-bundle.js`) at build time and
 // regenerates a Java constant the wallet checks at runtime via
 // BundleIntegrity. The constant lives inside the APK's classes.dex
 // where it inherits the APK signature, so a re-signer who swaps the
@@ -121,8 +121,8 @@ android {
 // bytes in the same PR.
 // ---------------------------------------------------------------
 task embedBundleHash {
-    def bundleFile = file("$projectDir/src/main/assets/quantumcoin-bundle.js")
-    def outputDir = file("$projectDir/src/main/java/com/quantumcoin/app/security/generated")
+    def bundleFile = file("$projectDir/src/main/assets/quantumswap-bundle.js")
+    def outputDir = file("$projectDir/src/main/java/com/quantumswap/app/security/generated")
     def outputFile = file("$outputDir/GeneratedBundleHash.java")
 
     inputs.file bundleFile
@@ -157,12 +157,12 @@ task embedBundleHash {
         def bytesBlock = bytesLines.join('\n')
 
         outputFile.text = """\
-package com.quantumcoin.app.security.generated;
+package com.quantumswap.app.security.generated;
 
 // AUTO-GENERATED at build time by the embedBundleHash Gradle task in
 // app/build.gradle. DO NOT EDIT. Any local changes will be overwritten
 // on the next build. To intentionally change the embedded hash,
-// replace the shipping `app/src/main/assets/quantumcoin-bundle.js`
+// replace the shipping `app/src/main/assets/quantumswap-bundle.js`
 // with the new bundle and let the embedBundleHash task regenerate
 // this file.
 // The bytes below are the SHA-256 digest of the EXACT bytes shipping
@@ -170,7 +170,7 @@ package com.quantumcoin.app.security.generated;
 // bundle at runtime and refuses to initialize the JS bridge if the
 // hashes differ. Keep this file format byte-for-byte stable so
 // developers can diff it against
-// QuantumCoinWallet/Generated/BundleHash_Generated.swift on the iOS
+// QuantumSwapWallet/Generated/BundleHash_Generated.swift on the iOS
 // side and confirm cross-platform bundle parity.
 
 public final class GeneratedBundleHash {
@@ -275,7 +275,7 @@ dependencies {
 // app/src/test/resources/code-snapshots/StablecoinImpersonatorFilter.swift
 // so the Android StablecoinImpersonatorFilterTest parity check can
 // byte-compare the two pattern lists at CI time. Source-of-truth for
-// the iOS file is the sibling repo at ../quantum-coin-wallet-ios; the
+// the iOS file is the sibling repo at ../quantumswap-wallet-ios; the
 // path is configurable via the -PiosRepo=... Gradle property for
 // non-default checkouts. The task is skip-on-missing so a developer
 // without the sibling repo checked out still gets a clean test run.
@@ -288,12 +288,12 @@ tasks.register('syncIosImpersonatorFilter') {
 
     doLast {
         def iosRepo = project.findProperty('iosRepo')
-                ?: file("${rootDir}/../quantum-coin-wallet-ios").absolutePath
-        def src = file("${iosRepo}/QuantumCoinWallet/Models/StablecoinImpersonatorFilter.swift")
+                ?: file("${rootDir}/../quantumswap-wallet-ios").absolutePath
+        def src = file("${iosRepo}/QuantumSwapWallet/Models/StablecoinImpersonatorFilter.swift")
         def dst = file("${projectDir}/src/test/resources/code-snapshots/StablecoinImpersonatorFilter.swift")
         if (!src.exists()) {
             logger.warn("syncIosImpersonatorFilter: source file not found at ${src.absolutePath}; "
-                    + "skipping. Pass -PiosRepo=/path/to/quantum-coin-wallet-ios to override.")
+                    + "skipping. Pass -PiosRepo=/path/to/quantumswap-wallet-ios to override.")
             return
         }
         dst.parentFile.mkdirs()

@@ -7,12 +7,13 @@
 
             <item android:bottom="2dp" android:left="2dp">
                 <shape>
+                    <!-- Teal primary-CTA fill, desktop - -btn: 20,184,166. -->
                     <gradient android:angle="90"
-                        android:startColor="#7d44aa"
-                        android:centerColor="#7d44aa"
-                        android:endColor="#7d44aa" />
+                        android:startColor="@color/quantumTeal"
+                        android:centerColor="@color/quantumTeal"
+                        android:endColor="@color/quantumTeal" />
 
-                    <stroke android:width="1dp" android:color="#7d44aa" />
+                    <stroke android:width="1dp" android:color="@color/quantumTeal" />
                     <corners android:radius="16dp" />
                     <padding android:bottom="10dp" android:left="10dp"
                         android:right="10dp" android:top="10dp" />

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Pools screen (ported from the desktop app's Pools page): browse
+    all factory pairs with reserves, plus a Create-Pair form. Pool
+    rows are built dynamically by PoolsFragment into
+    layout_pools_list.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:id="@+id/top_linear_layout_pools_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:background="@android:color/transparent">
+                <ImageButton
+                    android:id="@+id/imageButton_pools_back_arrow"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
+                    android:layout_gravity="left"
+                    android:background="@drawable/image_selector"
+                    android:src="@drawable/arrow_back_circle_outline"
+                    app:tint="@color/colorCommon6"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:layout_marginLeft="10dp"
+                android:layout_marginRight="10dp"
+                android:layout_below="@+id/top_linear_layout_pools_id"
+                android:background="@drawable/center_container">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="15dp"
+                    android:layout_marginLeft="10dp"
+                    android:layout_marginRight="10dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/textView_pools_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:gravity="center"
+                        android:textSize="20dp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorCommon6" />
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:layout_marginBottom="10dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/textView_pools_list_title"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="16dp"
+                            android:textStyle="bold"
+                            android:textColor="@color/colorCommon1" />
+
+                        <ImageButton
+                            android:id="@+id/imageButton_pools_refresh"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="5dp"
+                            android:scaleType="fitCenter"
+                            android:background="@drawable/image_selector"
+                            android:src="@drawable/retry"
+                            app:tint="@color/colorCommon6" />
+
+                        <ProgressBar
+                            android:id="@+id/progress_pools"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="5dp"
+                            android:indeterminate="true"
+                            android:indeterminateDrawable="@drawable/progress"
+                            android:visibility="gone" />
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/textView_pools_empty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="10dp"
+                        android:paddingBottom="10dp"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorMutedSecondaryText" />
+
+                    <LinearLayout
+                        android:id="@+id/layout_pools_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="15dp"
+                        android:layout_marginBottom="10dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <TextView
+                        android:id="@+id/textView_pools_create_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="16dp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorCommon1" />
+
+                    <TextView
+                        android:id="@+id/textView_pools_tokenA_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="14dp"
+                        android:textColor="@color/colorCommon3" />
+
+                    <Spinner
+                        android:id="@+id/spinner_pools_tokenA"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/spinner_dropdown_background"
+                        android:padding="10dp" />
+
+                    <EditText
+                        android:id="@+id/editText_pools_tokenA_custom"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="0x..."
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="66"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/textView_pools_tokenB_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="14dp"
+                        android:textColor="@color/colorCommon3" />
+
+                    <Spinner
+                        android:id="@+id/spinner_pools_tokenB"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/spinner_dropdown_background"
+                        android:padding="10dp" />
+
+                    <EditText
+                        android:id="@+id/editText_pools_tokenB_custom"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="0x..."
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="66"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/textView_pools_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textSize="13dp"
+                        android:textColor="@color/quantumAmber"
+                        android:visibility="gone" />
+
+                    <Button
+                        android:id="@+id/button_pools_create"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="14dp"
+                        android:paddingLeft="20dp"
+                        android:paddingRight="20dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp"
+                        android:textAllCaps="false"
+                        android:textColor="@color/colorWhite"
+                        android:background="@drawable/button_green_selector" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </RelativeLayout>
+
+    </ScrollView>
+
+</RelativeLayout>

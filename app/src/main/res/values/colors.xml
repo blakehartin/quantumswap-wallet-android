@@ -1,99 +1,114 @@
 <?xml version="1.0" encoding="utf-8"?>
 
+<!--
+    QuantumSwap "Quantum Violet" palette — single DARK theme.
+
+    Values are lifted from the desktop app's public/theme-quantum.css
+    variables so both clients share one visual identity:
+
+        - -bg           #050508   app background
+        - -panel        #0b0b12   card / surface fill
+        - -text         #e0e0e6   primary text
+        - -muted        50% white secondary text
+        - -accent       #6c3bff   violet (primary brand accent)
+        - -accent-soft  #9b73ff   soft violet (headings / links)
+        - -accent-2     #00e5ff   cyan (secondary accent)
+        - -btn          #14b8a6   teal (primary CTA buttons)
+        - -green        #34d399   success
+        - -amber        #fbbf24   warning
+        - -red-soft     #ffb3ba   soft error text
+
+    There is NO values-night/ overlay any more: the app ships dark-only
+    (decision recorded in the rebrand plan), so this file is the single
+    source of truth for every color slot. The legacy colorCommonN slots
+    are kept name-stable (≈200 usages across layouts/drawables/Java) and
+    simply retuned to the Quantum palette:
+
+        colorCommon1  heading / table-caption text     -> soft violet
+        colorCommon2  selected-tab / emphasis text     -> soft violet
+        colorCommon3  secondary text, hairline strokes -> light gray-violet
+        colorCommon6  primary body text                -> #e0e0e6
+        colorCommon7  card / surface fill              -> panel #0b0b12
+        colorCommon10 dialog background                -> panel #0b0b12
+-->
 <resources>
-  <!--
-  <color name="colorPrimary">#008577</color>
-  <color name="colorPrimaryDark">#00574B</color>
-  <color name="colorDarkPink">#D81B60</color>
 
-  <color name="colorPrimaryDark">#7d44aa</color>
-  <color name="colorPrimaryDarkStart">#7d44aa</color>
-  <color name="colorPrimaryDarkCenter">#956FB4</color>
-  <color name="colorPrimaryDarkEnd">#9C82B1</color>
+  <!-- Core Quantum palette (new names; prefer these in new code). -->
+  <color name="quantumBg">#050508</color>
+  <color name="quantumPanel">#0b0b12</color>
+  <color name="quantumPanelRaised">#14141d</color>
+  <color name="quantumText">#e0e0e6</color>
+  <color name="quantumMuted">#9a9aa6</color>
+  <color name="quantumBorder">#26262f</color>
+  <color name="quantumAccent">#6c3bff</color>
+  <color name="quantumAccentSoft">#9b73ff</color>
+  <color name="quantumCyan">#00e5ff</color>
+  <color name="quantumTeal">#14b8a6</color>
+  <color name="quantumGreen">#34d399</color>
+  <color name="quantumAmber">#fbbf24</color>
+  <color name="quantumRedSoft">#ffb3ba</color>
 
-  <color name="colorAccent">#7d44aa</color>
-  <color name="purple_200">#FFBB86FC</color>
-  <color name="purple_500">#FF6200EE</color>
-  <color name="purple_700">#FF3700B3</color>
-
-
-
-  <color name="teal_200">#FF03DAC5</color>
-  <color name="teal_700">#FF018786</color>
-  <color name="black">#FF000000</color>
-  <color name="white">#FFFFFFFF</color>
-
-  <color name="viewBGColor">#F7F9FB</color>
-  <color name="light_color">#323238</color>
-
-  <color name="colorGrayTwo">#f2f2f2</color>
-  <color name="colorBlack">#000000</color>
-  <color name="colorWhite">#FFFFFFFF</color>
-  <color name="colorGray">#dfdede</color>
-  <color name="colorMilkWhite">#FAFAF8</color>
-
-  <color name="colorGainsboro">#EDEDF5</color>
-
-  <color name="colorRedTwo">#e20c0c</color>
-
-  <color name="colorDialogGray">#5C5C5E</color>
-  <color name="colorDarkGray">#807d7d</color>
-
-
-
-  <color name="colorGreenOne">#1AB664</color>
-  <color name="colorGreen">#038f07</color>
-  <color name="colorGreenTwo">#4da300</color>
-
-  <color name="darkGrayColor">#372339</color>
-
-  <color name="colorFillSend">#FFB400</color>
-
-  -->
   <!-- Read only -->
-  <color name="colorAccent">#7d44aa</color>
-  <color name="colorPrimaryDark">#00574B</color>
-  <color name="colorPrimaryDarkStart">#7d44aa</color>
-  <color name="colorPrimaryDarkCenter">#956FB4</color>
-  <color name="colorPrimaryDarkEnd">#9C82B1</color>
+  <color name="colorAccent">#6c3bff</color>
+  <color name="colorPrimaryDark">#050508</color>
+  <!--
+      Banner / button gradient stops: violet -> soft violet -> cyan,
+      mirroring the desktop hero gradient (accent -> accent-soft ->
+      accent-2). Consumed by button_square_shadow and the top banner.
+  -->
+  <color name="colorPrimaryDarkStart">#6c3bff</color>
+  <color name="colorPrimaryDarkCenter">#7e57f2</color>
+  <color name="colorPrimaryDarkEnd">#00b8cc</color>
   <color name="colorWhite">#FFFFFFFF</color>
   <color name="colorBlock">#000000</color>
-  <color name="colorGray">#505051</color>
+  <color name="colorGray">#8a8a96</color>
 
   <!-- Change themes wise -->
-  <color name="colorEye">#D81B60</color>
-  <color name="colorToastBackground">#D81B60</color>
+  <color name="colorEye">#9b73ff</color>
+  <color name="colorToastBackground">#6c3bff</color>
 
-  <color name="colorProgressStart">#FF3700B3</color>
+  <color name="colorProgressStart">#9b73ff</color>
   <color name="colorProgressEnd">#00ffffff</color>
 
-  <color name="colorRectangleLine">#323238</color>
+  <color name="colorRectangleLine">#e0e0e6</color>
 
-  <color name="colorGainsboro">#EDEDF5</color>
-  <color name="colorRedTwo">#e20c0c</color>
+  <!-- Offline overlay scrim (was 50% dark gray in night mode). -->
+  <color name="colorGainsboro">#80101018</color>
+  <color name="colorRedTwo">#ff7043</color>
 
-  <color name="colorGreenOne">#1AB664</color>
-  <color name="colorGreen">#038f07</color>
+  <color name="colorGreenOne">#34d399</color>
+  <color name="colorGreen">#34d399</color>
 
-  <color name="colorMilkWhite">#FAFAF8</color>
+  <!--
+      Legacy "light card on banner" fill (button_square_shadow inner
+      rectangle, wallet cards). Dark theme: panel surface.
+  -->
+  <color name="colorMilkWhite">#0b0b12</color>
 
-  <color name="colorCommon1">#372339</color>
-  <color name="colorCommon2">#FF6200EE</color>
+  <color name="colorCommon1">#9b73ff</color>
+  <color name="colorCommon2">#9b73ff</color>
 
-  <color name="colorCommon3">#807d7d</color>
-  <color name="colorCommon4">#dfdede</color>
-  <color name="colorCommon5">#f2f2f2</color>
+  <color name="colorCommon3">#b9b9c6</color>
+  <color name="colorCommon4">#3a3a48</color>
+  <color name="colorCommon5">#14141d</color>
 
-  <color name="colorCommon6">#000000</color>
-  <color name="colorCommon7">#FFFFFFFF</color>
+  <color name="colorCommon6">#e0e0e6</color>
+  <color name="colorCommon7">#0b0b12</color>
 
-  <color name="colorCommon8">#FF3700B3</color>
-  <color name="colorCommon9">#D81B60</color>
+  <color name="colorCommon8">#c084fc</color>
+  <color name="colorCommon9">#ffb3ba</color>
 
-  <color name="colorCommon10">#5C5C5E</color>
+  <color name="colorCommon10">#0b0b12</color>
 
-  <color name="colorSeedA">#5C5C5E</color>
+  <color name="colorSeedA">#0b0b12</color>
 
+  <!--
+      Seed-tile background colors are deliberately kept identical to the
+      pre-rebrand values: seed entry/verification is a high-stakes task
+      and users identify tiles by color ("the blue tile", "the black
+      tile"). Retinting them for the violet theme would break that
+      mental model for users migrating between platforms/versions.
+  -->
   <color name="colorCommonSeedA">#0000FF</color>
   <color name="colorCommonSeedB">#008000</color>
   <color name="colorCommonSeedC">#AA6F00</color>
@@ -101,61 +116,36 @@
   <color name="colorCommonSeedE">#5E0D1B</color>
   <color name="colorCommonSeedF">#9B0BB8</color>
   <color name="colorCommonSeedG">#046D94</color>
+  <!--
+      Tile H is BLACK, which is invisible against the dark app
+      background. H stays black for color identity, but
+      bg_seed_view_h_curve.xml (and edit variant) get a white border +
+      the seed label above renders white via colorCommonSeedHLabel.
+  -->
   <color name="colorCommonSeedH">#000000</color>
   <color name="colorCommonSeedI">#3519C5</color>
   <color name="colorCommonSeedJ">#648D24</color>
   <color name="colorCommonSeedK">#DF1313</color>
   <color name="colorCommonSeedL">#003F4D</color>
 
-  <!--
-      Light-mode values for the H seed tile's label color
-      and border color. In light mode the tile background is black
-      and the label above it inherits the standard text color, so the
-      "label" alias just resolves to the tile color (black). The dark
-      override in values-night flips both to white. Drawables that
-      reference these stay theme-portable.
-  -->
-  <color name="colorCommonSeedHLabel">#000000</color>
-  <color name="colorCommonSeedHBorder">@color/colorCommon3</color>
+  <!-- White label + border so the black H tile stays visible on dark. -->
+  <color name="colorCommonSeedHLabel">#FFFFFFFF</color>
+  <color name="colorCommonSeedHBorder">#FFFFFFFF</color>
 
   <!--
       Text color for the seed-WORD glyphs displayed inside the colored
-      tiles on the New-seed / Reveal-seed screens. White in BOTH light
-      and dark mode (no values-night override). The 12 tile fills
-      (colorCommonSeedA..L, e.g. bg_seed_view_a_curve = blue, b_curve
-      = green, k_curve = red, h_curve = black) are deliberately
-      identical across themes for color-identity reasons, and they
-      are saturated deep-tones (or pure black for the H tile), so a
-      single white glyph gives uniformly high in-tile contrast in
-      both themes. Keeping the resource scoped to the seed-view cells
-      (rather than reusing colorCommon7) means we don't perturb the
-      ~60 other usages of colorCommon7 / colorCommon6 that would flip
-      if we retuned them directly.
-      <p>Note: this color is for the READ-ONLY seed display only;
-      seed-entry (typing) cells use bg_seed_edit_* backgrounds and a
-      different text color that follows the standard text palette.
+      tiles on the New-seed / Reveal-seed screens. The tile fills are
+      saturated deep-tones (or pure black for H), so a single white
+      glyph gives uniformly high in-tile contrast.
   -->
   <color name="colorSeedViewWord">#FFFFFFFF</color>
 
   <!--
-      Muted secondary text color (e.g. the contract-address line that
-      appears under the asset spinner on the Send screen, or the
-      empty-state caption on the token list). Sits one step below
-      colorCommon6 / colorCommon3 in the typographic hierarchy: it
-      should always be legible against the screen background but
-      visually quieter than primary or secondary body copy.
-
-      Light value (#5C5C5E) intentionally matches the previous
-      colorCommon10 light value so the appearance in light mode is
-      unchanged from before this resource was introduced. The dark
-      override (values-night/colors.xml) flips to a soft mid-gray
-      (#B0B0B0) so the same text remains readable against the dark
-      background; using colorCommon10 directly was the source of a
-      "black-on-black" dark-mode bug because that resource is also
-      consumed as a *dialog background* in dark mode and cannot be
-      retuned without breaking the dialog chrome.
+      Muted secondary text (contract-address line under the Send asset
+      spinner, empty-state captions). One step below colorCommon6 /
+      colorCommon3 in the hierarchy; maps to the desktop -muted
+      (50% white) tone, lightened slightly for small font sizes.
   -->
-  <color name="colorMutedSecondaryText">#5C5C5E</color>
-
+  <color name="colorMutedSecondaryText">#9a9aa6</color>
 
 </resources>

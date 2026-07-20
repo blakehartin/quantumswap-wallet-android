@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Advanced hub (entry in Settings): Liquidity and Pools, mirroring
+    the desktop app's Advanced section. Same card chrome as
+    settings_fragment.xml.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:id="@+id/top_linear_layout_advanced_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:background="@android:color/transparent">
+                <ImageButton
+                    android:id="@+id/imageButton_advanced_back_arrow"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
+                    android:layout_gravity="left"
+                    android:background="@drawable/image_selector"
+                    android:src="@drawable/arrow_back_circle_outline"
+                    app:tint="@color/colorCommon6"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:layout_marginLeft="10dp"
+                android:layout_marginRight="10dp"
+                android:layout_below="@+id/top_linear_layout_advanced_id"
+                android:background="@drawable/center_container">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="15dp"
+                    android:layout_marginLeft="10dp"
+                    android:layout_marginRight="10dp"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/textView_advanced_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:gravity="center"
+                        android:textSize="20dp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorCommon6" />
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <Button
+                        android:id="@+id/button_advanced_liquidity"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/image_selector"
+                        android:drawableRight="@drawable/chevron_right"
+                        android:drawableTint="@color/colorCommon4"
+                        android:drawablePadding="5dp"
+                        android:paddingTop="5dp"
+                        android:gravity="left|center_vertical"
+                        android:textAllCaps="false"
+                        android:text="Liquidity"/>
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <Button
+                        android:id="@+id/button_advanced_pools"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/image_selector"
+                        android:drawableRight="@drawable/chevron_right"
+                        android:drawableTint="@color/colorCommon4"
+                        android:drawablePadding="5dp"
+                        android:paddingTop="5dp"
+                        android:gravity="left|center_vertical"
+                        android:textAllCaps="false"
+                        android:text="Pools"/>
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </RelativeLayout>
+
+    </ScrollView>
+
+</RelativeLayout>

@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Releases screen (under Settings): view the built-in Beta2 contract
+    set, select the active release, and add user-defined releases
+    (name + WQ / Factory / Router addresses). Release rows are built
+    dynamically by ReleasesFragment into layout_releases_list.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:id="@+id/top_linear_layout_releases_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:background="@android:color/transparent">
+                <ImageButton
+                    android:id="@+id/imageButton_releases_back_arrow"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:padding="5dp"
+                    android:scaleType="fitCenter"
+                    android:layout_gravity="left"
+                    android:background="@drawable/image_selector"
+                    android:src="@drawable/arrow_back_circle_outline"
+                    app:tint="@color/colorCommon6"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:layout_marginLeft="10dp"
+                android:layout_marginRight="10dp"
+                android:layout_below="@+id/top_linear_layout_releases_id"
+                android:background="@drawable/center_container">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="15dp"
+                    android:layout_marginLeft="10dp"
+                    android:layout_marginRight="10dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/textView_releases_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="5dp"
+                        android:gravity="center"
+                        android:textSize="20dp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorCommon6" />
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:layout_marginBottom="10dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <RadioGroup
+                        android:id="@+id/layout_releases_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <View
+                        android:layout_width="wrap_content"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="15dp"
+                        android:layout_marginBottom="10dp"
+                        android:alpha="0.2"
+                        android:background="@drawable/line_2_shape" />
+
+                    <TextView
+                        android:id="@+id/textView_releases_add_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="16dp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorCommon1" />
+
+                    <EditText
+                        android:id="@+id/editText_releases_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="text"
+                        android:maxLength="60"
+                        android:textSize="14dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <EditText
+                        android:id="@+id/editText_releases_wq"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="66"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <EditText
+                        android:id="@+id/editText_releases_factory"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="66"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <EditText
+                        android:id="@+id/editText_releases_router"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="66"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <TextView
+                        android:id="@+id/textView_releases_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textSize="13dp"
+                        android:textColor="@color/quantumAmber"
+                        android:visibility="gone" />
+
+                    <Button
+                        android:id="@+id/button_releases_add"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="14dp"
+                        android:paddingLeft="20dp"
+                        android:paddingRight="20dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp"
+                        android:textAllCaps="false"
+                        android:textColor="@color/colorWhite"
+                        android:background="@drawable/button_green_selector" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </RelativeLayout>
+
+    </ScrollView>
+
+</RelativeLayout>

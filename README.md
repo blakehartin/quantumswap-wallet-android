@@ -1,10 +1,10 @@
-# Quantum Coin Wallet — Android
+# QuantumSwap Wallet — Android
 
 [![Platform: Android 10+](https://img.shields.io/badge/platform-Android%2010%2B-green)](https://developer.android.com)
 [![Java: 8](https://img.shields.io/badge/java-8-orange)](https://www.oracle.com/java/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **iOS counterpart:** the sibling [Quantum Coin iOS wallet](https://github.com/quantumcoinproject/quantum-coin-wallet-ios)
+> **iOS counterpart:** the sibling [QuantumSwap iOS wallet](https://github.com/quantumcoinproject/quantumswap-wallet-ios)
 > is kept feature-parity with this Android client. Both share the same
 > JavaScript SDK bundle byte-for-byte and the same `en_us.json`
 > localization catalog as the canonical reference; the Android-side
@@ -23,7 +23,7 @@ and [consensus whitepaper](https://quantumcoin.org/whitepapers/Quantum-Coin-Bloc
 for the protocol-level rationale.
 
 This repository hosts the **Android** wallet. It is a feature-parity
-port of the [Quantum Coin iOS wallet](https://github.com/quantumcoinproject/quantum-coin-wallet-ios)
+port of the [Quantum Coin iOS wallet](https://github.com/quantumcoinproject/quantumswap-wallet-ios)
 and shares the same JavaScript SDK bundle byte-for-byte, so every
 signed transaction is reproducible across both clients.
 
@@ -62,9 +62,9 @@ signed transaction is reproducible across both clients.
 - **Multiple wallets per install.** Stored in a single
   layered-encrypted strongbox; each wallet is addressable via the
   Wallets screen
-  ([`view/fragment/WalletsFragment.java`](app/src/main/java/com/quantumcoin/app/view/fragment/WalletsFragment.java)).
+  ([`view/fragment/WalletsFragment.java`](app/src/main/java/com/quantumswap/app/view/fragment/WalletsFragment.java)).
 - **New wallet creation** with a 32-word seed phrase
-  (`QuantumCoinSDK.Wallet.createRandom` →
+  (`QuantumSwapSDK.Wallet.createRandom` →
   `SeedWordsSDK.getWordListFromSeedArray`). Seed verification quiz
   is enforced before the wallet is persisted.
 - **Restore from seed words** with BIP39-style prefix
@@ -73,7 +73,7 @@ signed transaction is reproducible across both clients.
 - **Restore from `.wallet` backup file** — single file or a folder
   via the Storage Access Framework; batched password prompt walks
   through every wallet in the picked location
-  ([`backup/CloudBackupManager.java`](app/src/main/java/com/quantumcoin/app/backup/CloudBackupManager.java)).
+  ([`backup/CloudBackupManager.java`](app/src/main/java/com/quantumswap/app/backup/CloudBackupManager.java)).
 - **Reveal seed words** (gated by tap-to-reveal +
   `setImportantForAccessibility(NO_HIDE_DESCENDANTS)` so
   TalkBack never reads the words aloud, plus
@@ -93,18 +93,18 @@ signed transaction is reproducible across both clients.
   Tokens** tabs; impersonator filter blocks any token whose
   symbol or name resembles a stablecoin unless the contract is
   on the recognized allow-list
-  ([`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumcoin/app/tokens/RecognizedTokens.java),
-  [`tokens/StablecoinImpersonatorFilter.java`](app/src/main/java/com/quantumcoin/app/tokens/StablecoinImpersonatorFilter.java)).
+  ([`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumswap/app/tokens/RecognizedTokens.java),
+  [`tokens/StablecoinImpersonatorFilter.java`](app/src/main/java/com/quantumswap/app/tokens/StablecoinImpersonatorFilter.java)).
 - **Transaction review dialog** with checksum-cased addresses,
   fee summary, and explicit contract-address row for token sends
-  ([`view/fragment/SendFragment.java`](app/src/main/java/com/quantumcoin/app/view/fragment/SendFragment.java)).
+  ([`view/fragment/SendFragment.java`](app/src/main/java/com/quantumswap/app/view/fragment/SendFragment.java)).
 - **QR-code scanning** for recipient addresses via CameraX +
   ML Kit Barcode Scanning (`android.permission.CAMERA` declared in
   `AndroidManifest.xml`).
 - **Receive screen** with a `quantumcoin:` URI QR code and a
   centred copy-to-clipboard control with 30-second auto-clear
-  ([`view/fragment/ReceiveFragment.java`](app/src/main/java/com/quantumcoin/app/view/fragment/ReceiveFragment.java),
-  [`utils/SecureClipboard.java`](app/src/main/java/com/quantumcoin/app/utils/SecureClipboard.java)).
+  ([`view/fragment/ReceiveFragment.java`](app/src/main/java/com/quantumswap/app/view/fragment/ReceiveFragment.java),
+  [`utils/SecureClipboard.java`](app/src/main/java/com/quantumswap/app/utils/SecureClipboard.java)).
 
 ### Network configuration
 
@@ -116,12 +116,12 @@ signed transaction is reproducible across both clients.
   re-asserted at "Submit" time via a `NetworkSnapshot` so a
   network switch in the middle of the signing flow aborts rather
   than producing a mis-bound transaction
-  ([`networking/NetworkSnapshot.java`](app/src/main/java/com/quantumcoin/app/networking/NetworkSnapshot.java)).
+  ([`networking/NetworkSnapshot.java`](app/src/main/java/com/quantumswap/app/networking/NetworkSnapshot.java)).
 - **Live network-change notifications** via `LocalBroadcastManager`
   push the new active network into every visible Fragment without
   an Activity restart; the broadcaster is process-local by design
   so other apps cannot observe or forge network-state events
-  ([`events/NetworkChangeBroadcaster.java`](app/src/main/java/com/quantumcoin/app/events/NetworkChangeBroadcaster.java)).
+  ([`events/NetworkChangeBroadcaster.java`](app/src/main/java/com/quantumswap/app/events/NetworkChangeBroadcaster.java)).
 
 ### Backup and restore
 
@@ -135,7 +135,7 @@ signed transaction is reproducible across both clients.
   backup save picker. All `.wallet` files in the picked folder are
   enumerated and run through the same batched-decrypt loop the
   single-file restore uses
-  ([`backup/CloudBackupManager.java`](app/src/main/java/com/quantumcoin/app/backup/CloudBackupManager.java)).
+  ([`backup/CloudBackupManager.java`](app/src/main/java/com/quantumswap/app/backup/CloudBackupManager.java)).
 - **Android Auto-Backup gate** — wallet files are excluded from
   Auto-Backup by default
   ([`app/src/main/res/xml/backup_rules.xml`](app/src/main/res/xml/backup_rules.xml),
@@ -144,10 +144,10 @@ signed transaction is reproducible across both clients.
   immediately calls `BackupManager.dataChanged()` so the include
   rule takes effect on the next backup cycle without waiting for
   the next strongbox write
-  ([`backup/WalletBackupAgent.java`](app/src/main/java/com/quantumcoin/app/backup/WalletBackupAgent.java)).
+  ([`backup/WalletBackupAgent.java`](app/src/main/java/com/quantumswap/app/backup/WalletBackupAgent.java)).
 - **Cross-platform backup compatibility.** Per-wallet exported
   `.wallet` files are produced by the shared
-  `quantumcoin-bundle.js` `Wallet.encryptSync` call on both
+  `quantumswap-bundle.js` `Wallet.encryptSync` call on both
   platforms, so a `.wallet` file written by the Android wallet
   can be restored by the iOS wallet (and vice versa) using the
   same backup password. The whole-strongbox slot
@@ -163,8 +163,8 @@ signed transaction is reproducible across both clients.
 
 - English (`en_us`) localization with 230+ keys
   ([`app/src/main/res/raw/en_us.json`](app/src/main/res/raw/en_us.json),
-  [`interact/JsonInteract.java`](app/src/main/java/com/quantumcoin/app/interact/JsonInteract.java),
-  [`viewmodel/JsonViewModel.java`](app/src/main/java/com/quantumcoin/app/viewmodel/JsonViewModel.java)).
+  [`interact/JsonInteract.java`](app/src/main/java/com/quantumswap/app/interact/JsonInteract.java),
+  [`viewmodel/JsonViewModel.java`](app/src/main/java/com/quantumswap/app/viewmodel/JsonViewModel.java)).
 - TalkBack / accessibility deliberately suppressed on the four
   seed-handling surfaces (reveal, new-seed, verify, restore) via
   `setImportantForAccessibility(NO_HIDE_DESCENDANTS)` so the
@@ -194,12 +194,12 @@ contract.
 
 - **AES-256-GCM** for every encrypted-at-rest blob, in a single
   Java owner so there is one review surface for AEAD usage
-  ([`keystorage/Aead.java`](app/src/main/java/com/quantumcoin/app/keystorage/Aead.java)).
+  ([`keystorage/Aead.java`](app/src/main/java/com/quantumswap/app/keystorage/Aead.java)).
 - **scrypt KDF** at `N=2^18, r=8, p=1, keyLen=32` — runs inside
   the shared JS bundle so the Android and iOS wallets derive
   identical keys for identical passwords. Min-bound enforced at
   the bridge boundary so a future debug-weakened call fails loud
-  ([`bridge/QuantumCoinJSBridge.java`](app/src/main/java/com/quantumcoin/app/bridge/QuantumCoinJSBridge.java),
+  ([`bridge/QuantumSwapJSBridge.java`](app/src/main/java/com/quantumswap/app/bridge/QuantumSwapJSBridge.java),
   [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) `scryptDerive`).
 - **Brute-force lockout** with a stair-step backoff
   (typo-tolerant for the first four attempts; 30 s, 60 s, 2 min,
@@ -217,17 +217,17 @@ contract.
   flows in `HomeWalletFragment` (`STRONGBOX_UNLOCK` and
   `BACKUP_DECRYPT` channels) so an attacker cannot bypass the
   rate limit by mounting attempts through the restore dialog
-  ([`security/UnlockAttemptLimiter.java`](app/src/main/java/com/quantumcoin/app/security/UnlockAttemptLimiter.java),
-  [`view/fragment/HomeWalletFragment.java`](app/src/main/java/com/quantumcoin/app/view/fragment/HomeWalletFragment.java)
+  ([`security/UnlockAttemptLimiter.java`](app/src/main/java/com/quantumswap/app/security/UnlockAttemptLimiter.java),
+  [`view/fragment/HomeWalletFragment.java`](app/src/main/java/com/quantumswap/app/view/fragment/HomeWalletFragment.java)
   `attemptBatchDecrypt` / `performRestoreFromUri`).
 - **Tamper gate** — multi-signal root / debugger-attached / Frida
   detector. Requires ≥2 independent root signals before flagging;
   debugger-in-Release and runtime-instrumentation are hard
   signals. The signing chokepoint
-  (`QuantumCoinJSBridge.sendTransaction`) calls
+  (`QuantumSwapJSBridge.sendTransaction`) calls
   `TamperGate.assertSafeToSign()` before the private key reaches
   the bridge
-  ([`security/TamperGate.java`](app/src/main/java/com/quantumcoin/app/security/TamperGate.java)).
+  ([`security/TamperGate.java`](app/src/main/java/com/quantumswap/app/security/TamperGate.java)).
 - **JS bundle SHA-256 pin** — the bundle owns every signing
   primitive, so its bytes are hashed at build time by the
   `embedBundleHash` Gradle task, embedded in
@@ -235,7 +235,7 @@ contract.
   and inherits the APK signature), re-hashed at runtime, and the
   bridge refuses to initialize on mismatch
   ([`app/build.gradle`](app/build.gradle) `embedBundleHash`,
-  [`security/BundleIntegrity.java`](app/src/main/java/com/quantumcoin/app/security/BundleIntegrity.java)).
+  [`security/BundleIntegrity.java`](app/src/main/java/com/quantumswap/app/security/BundleIntegrity.java)).
 - **Binary key channel** between Java and JS — private/public key
   bytes stage as `Uint8Array` via a synchronous custom-scheme
   pull rather than base64 strings, so JS can `.fill(0)` them
@@ -244,8 +244,8 @@ contract.
   `pullPayloadBinary`) is grep-guarded by a CI test that fails
   the build if a sensitive arg is ever passed inline through
   `evaluateJavascript`
-  ([`bridge/QuantumCoinJSBridge.java`](app/src/main/java/com/quantumcoin/app/bridge/QuantumCoinJSBridge.java),
-  [`app/src/test/java/com/quantumcoin/app/bridge/SendSurfaceLockdownTest.java`](app/src/test/java/com/quantumcoin/app/bridge/SendSurfaceLockdownTest.java)).
+  ([`bridge/QuantumSwapJSBridge.java`](app/src/main/java/com/quantumswap/app/bridge/QuantumSwapJSBridge.java),
+  [`app/src/test/java/com/quantumswap/app/bridge/SendSurfaceLockdownTest.java`](app/src/test/java/com/quantumswap/app/bridge/SendSurfaceLockdownTest.java)).
 - **Strict TLS 1.3-only floor on every Java/Kotlin TLS client.**
   `TlsPinning.applyTo(...)` installs an explicit
   `ConnectionSpec` built from `RESTRICTED_TLS` and narrowed to
@@ -257,7 +257,7 @@ contract.
   floor that guarantees the platform `SSLEngine` can negotiate
   TLS 1.3 natively, so the strict requirement never starves a
   legitimate device
-  ([`security/TlsPinning.java`](app/src/main/java/com/quantumcoin/app/security/TlsPinning.java) `TLS_1_3_ONLY`,
+  ([`security/TlsPinning.java`](app/src/main/java/com/quantumswap/app/security/TlsPinning.java) `TLS_1_3_ONLY`,
   [`app/build.gradle`](app/build.gradle) `minSdk`).
 - **Post-quantum hybrid key exchange (Android 14+).** The strict
   spec inherits the cipher-suite allow-list from `RESTRICTED_TLS`
@@ -285,7 +285,7 @@ contract.
   the RPC would hard-code centralization that the project
   explicitly rejects. Baseline TLS chain validation still applies
   on every endpoint
-  ([`security/TlsPinning.java`](app/src/main/java/com/quantumcoin/app/security/TlsPinning.java)).
+  ([`security/TlsPinning.java`](app/src/main/java/com/quantumswap/app/security/TlsPinning.java)).
 - **Strict hostname verification** on every `ApiClient` HTTPS
   request. The `ApiClient.applySslSettings()` builder
   intentionally does NOT call `.hostnameVerifier(...)` — by
@@ -294,7 +294,7 @@ contract.
   `OkHostnameVerifier.INSTANCE` (strict RFC 2818 / RFC 6125
   hostname matching against SubjectAlternativeName entries). A
   Javadoc-grade audit comment in
-  [`ApiClient.java`](app/src/main/java/com/quantumcoin/app/api/read/ApiClient.java)
+  [`ApiClient.java`](app/src/main/java/com/quantumswap/app/api/read/ApiClient.java)
   documents the contract and bans any future
   `NoopHostnameVerifier`-style regression.
 - **Network-security config** declares `usesCleartextTraffic=false`
@@ -307,7 +307,7 @@ contract.
 - **Two-slot rotating writer** for the strongbox file, so a power
   cut between rename and journal-flush still leaves a valid
   previous-good slot
-  ([`storage/AtomicSlotWriter.java`](app/src/main/java/com/quantumcoin/app/storage/AtomicSlotWriter.java)).
+  ([`storage/AtomicSlotWriter.java`](app/src/main/java/com/quantumswap/app/storage/AtomicSlotWriter.java)).
 - **`FileChannel.force(true)`** on every persisted file (the
   Android equivalent of iOS `F_FULLFSYNC`) so bytes reach the
   storage media, not just the page cache. The parent directory
@@ -321,12 +321,12 @@ contract.
 - **File-level MAC** with a UI-block hash binding so an attacker
   who swaps slot files' UI prefs cannot re-bind them under the
   original MAC
-  ([`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxFileCodec.java)).
+  ([`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxFileCodec.java)).
 - **Anti-rollback generation counter** — every successful unlock
   validates a monotonic generation HMAC bound to an
   AndroidKeystore-resident key, so a slot file copied off the
   device and replayed is rejected at the next unlock
-  ([`keystorage/MacUtil.java`](app/src/main/java/com/quantumcoin/app/keystorage/MacUtil.java)).
+  ([`keystorage/MacUtil.java`](app/src/main/java/com/quantumswap/app/keystorage/MacUtil.java)).
 - **App-private `Context.getFilesDir()/strongbox/`** for every
   slot file. Auto-Backup inclusion is governed explicitly by
   [`app/src/main/res/xml/backup_rules.xml`](app/src/main/res/xml/backup_rules.xml)
@@ -336,7 +336,7 @@ contract.
   encrypted file size leaks no information about the wallet
   count. The bucket is sized to comfortably hold ≥256 wallets
   with PQC private/public key pairs (≈10 KiB each)
-  ([`strongbox/StrongboxPadding.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxPadding.java)).
+  ([`strongbox/StrongboxPadding.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxPadding.java)).
 
 ### UI hardening
 
@@ -345,28 +345,28 @@ contract.
   Callbacks.onActivityPaused` / removed in `onActivityResumed`,
   so the system-captured Recents card never contains seed words,
   balances, or addresses
-  ([`ux/SnapshotRedactor.java`](app/src/main/java/com/quantumcoin/app/ux/SnapshotRedactor.java)).
+  ([`ux/SnapshotRedactor.java`](app/src/main/java/com/quantumswap/app/ux/SnapshotRedactor.java)).
 - **`FLAG_SECURE` audit** across every Activity that may render a
   seed phrase, so the OS refuses to include the screen in
   screenshots, screen recordings, and casts
-  ([`view/activities/HomeActivity.java`](app/src/main/java/com/quantumcoin/app/view/activities/HomeActivity.java)).
+  ([`view/activities/HomeActivity.java`](app/src/main/java/com/quantumswap/app/view/activities/HomeActivity.java)).
 - **Screen-capture observer** uses `DisplayManager` to detect
   secondary displays / mirroring and exposes an `isCapturing`
   signal that seed surfaces consult on every API level (no API
   33+ requirement)
-  ([`security/ScreenCaptureGuard.java`](app/src/main/java/com/quantumcoin/app/security/ScreenCaptureGuard.java)).
+  ([`security/ScreenCaptureGuard.java`](app/src/main/java/com/quantumswap/app/security/ScreenCaptureGuard.java)).
 - **Clipboard auto-expiry** for copied seed phrases (30s
   countdown; cleared on view-disappear); copied addresses go
   through the same `SecureClipboard` facade so a future blanket
   policy change has one entry point
-  ([`utils/SecureClipboard.java`](app/src/main/java/com/quantumcoin/app/utils/SecureClipboard.java)).
+  ([`utils/SecureClipboard.java`](app/src/main/java/com/quantumswap/app/utils/SecureClipboard.java)).
 - **Token impersonation defenses** — recognized-token allow-list
   by **contract address** (not name/symbol), plus a stablecoin
   impersonator hard-suppressor that blocks any token whose label
   resembles `USDT` / `USDC` / `Tether` / etc. unless its
   contract is on the allow-list
-  ([`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumcoin/app/tokens/RecognizedTokens.java),
-  [`tokens/StablecoinImpersonatorFilter.java`](app/src/main/java/com/quantumcoin/app/tokens/StablecoinImpersonatorFilter.java)).
+  ([`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumswap/app/tokens/RecognizedTokens.java),
+  [`tokens/StablecoinImpersonatorFilter.java`](app/src/main/java/com/quantumswap/app/tokens/StablecoinImpersonatorFilter.java)).
 - **Network-snapshot capture at Review time** — the chain id and
   RPC endpoint the user confirmed are re-asserted at Submit time
   via `NetworkSnapshot`; a network switch mid-flight aborts
@@ -374,12 +374,12 @@ contract.
 - **Logger facade** — every direct `android.util.Log.*` and
   `Timber.tag(...).*` call in security-sensitive files is routed
   through a single
-  [`Logger`](app/src/main/java/com/quantumcoin/app/Logger.java)
+  [`Logger`](app/src/main/java/com/quantumswap/app/Logger.java)
   facade. Release builds drop VERBOSE/DEBUG/INFO entirely and
   replace WARN/ERROR payload with an `evt` marker; debug builds
   apply address / tx-hash / long-hex / base64 redaction before
   the message reaches logcat. A CI grep guard
-  ([`LoggerFacadeLockdownTest`](app/src/test/java/com/quantumcoin/app/LoggerFacadeLockdownTest.java))
+  ([`LoggerFacadeLockdownTest`](app/src/test/java/com/quantumswap/app/LoggerFacadeLockdownTest.java))
   fails the build if a stray direct `Log.*` call slips into a
   security-sensitive file.
 
@@ -388,7 +388,7 @@ contract.
 The wallet offers the device's Autofill provider to **generate, save,
 and re-fill** the single **unlock password** and each **per-wallet
 backup password**. All wiring is centralized in
-[`security/CredentialIdentifier.java`](app/src/main/java/com/quantumcoin/app/security/CredentialIdentifier.java).
+[`security/CredentialIdentifier.java`](app/src/main/java/com/quantumswap/app/security/CredentialIdentifier.java).
 
 - **The OS draws the password sheet, not the app.** The "Suggest strong
   password" / "Save password?" sheets are presented by the active
@@ -398,8 +398,8 @@ backup password**. All wiring is centralized in
   `CredentialIdentifier.attachUsernameField(...)` injects a hidden
   username next to each password field so the provider stores each
   secret in its own slot instead of overwriting a single app-wide entry:
-  - unlock: `QuantumCoin-<deviceSuffix>`
-  - backup: `QuantumCoin-backup-<canonical-address>-<deviceSuffix>`
+  - unlock: `QuantumSwap-<deviceSuffix>`
+  - backup: `QuantumSwap-backup-<canonical-address>-<deviceSuffix>`
 
   The wallet address is canonicalized (lowercase, `0x` prefix) so the
   save site (create) and the suggest site (restore) produce an identical
@@ -431,11 +431,11 @@ backup password**. All wiring is centralized in
   keyboard's autofill menu.
 
 Relevant files:
-[`view/fragment/HomeWalletFragment.java`](app/src/main/java/com/quantumcoin/app/view/fragment/HomeWalletFragment.java)
+[`view/fragment/HomeWalletFragment.java`](app/src/main/java/com/quantumswap/app/view/fragment/HomeWalletFragment.java)
 (set-password + post-create backup),
-[`view/dialog/BackupPasswordDialog.java`](app/src/main/java/com/quantumcoin/app/view/dialog/BackupPasswordDialog.java)
+[`view/dialog/BackupPasswordDialog.java`](app/src/main/java/com/quantumswap/app/view/dialog/BackupPasswordDialog.java)
 (backup create / restore),
-[`view/activities/HomeActivity.java`](app/src/main/java/com/quantumcoin/app/view/activities/HomeActivity.java)
+[`view/activities/HomeActivity.java`](app/src/main/java/com/quantumswap/app/view/activities/HomeActivity.java)
 (unlock dialog).
 
 ### Defense layering recap
@@ -475,11 +475,11 @@ invariant tests.
 
 | Layer | Responsibility | Source |
 | --- | --- | --- |
-| L1 — Storage | Two-slot atomic-rotate with deep verify | [`storage/AtomicSlotWriter.java`](app/src/main/java/com/quantumcoin/app/storage/AtomicSlotWriter.java) |
-| L2 — Schema | Outer file envelope, file-level MAC, padding | [`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxFileCodec.java), [`strongbox/StrongboxPadding.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxPadding.java) |
-| L3 — Crypto | AES-256-GCM (JCE), HMAC-SHA-256 (JCE), HKDF-SHA-256 (BouncyCastle), scrypt (JS SDK) | [`keystorage/Aead.java`](app/src/main/java/com/quantumcoin/app/keystorage/Aead.java), [`keystorage/MacUtil.java`](app/src/main/java/com/quantumcoin/app/keystorage/MacUtil.java), bridge `scryptDerive` ([`assets/bridge.html`](app/src/main/assets/bridge.html)) |
-| L4 — Unlock coordinator | scrypt → unwrap mainKey → install snapshot; re-derive per write; zeroize | [`keystorage/UnlockCoordinator.java`](app/src/main/java/com/quantumcoin/app/keystorage/UnlockCoordinator.java) |
-| L5 — Strongbox accessor | In-memory typed snapshot, inner checksum, per-wallet wire codec | [`keystorage/SecureStorage.java`](app/src/main/java/com/quantumcoin/app/keystorage/SecureStorage.java), [`strongbox/StrongboxPayload.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxPayload.java), [`strongbox/WalletEntryCodec.java`](app/src/main/java/com/quantumcoin/app/strongbox/WalletEntryCodec.java) |
+| L1 — Storage | Two-slot atomic-rotate with deep verify | [`storage/AtomicSlotWriter.java`](app/src/main/java/com/quantumswap/app/storage/AtomicSlotWriter.java) |
+| L2 — Schema | Outer file envelope, file-level MAC, padding | [`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxFileCodec.java), [`strongbox/StrongboxPadding.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxPadding.java) |
+| L3 — Crypto | AES-256-GCM (JCE), HMAC-SHA-256 (JCE), HKDF-SHA-256 (BouncyCastle), scrypt (JS SDK) | [`keystorage/Aead.java`](app/src/main/java/com/quantumswap/app/keystorage/Aead.java), [`keystorage/MacUtil.java`](app/src/main/java/com/quantumswap/app/keystorage/MacUtil.java), bridge `scryptDerive` ([`assets/bridge.html`](app/src/main/assets/bridge.html)) |
+| L4 — Unlock coordinator | scrypt → unwrap mainKey → install snapshot; re-derive per write; zeroize | [`keystorage/UnlockCoordinator.java`](app/src/main/java/com/quantumswap/app/keystorage/UnlockCoordinator.java) |
+| L5 — Strongbox accessor | In-memory typed snapshot, inner checksum, per-wallet wire codec | [`keystorage/SecureStorage.java`](app/src/main/java/com/quantumswap/app/keystorage/SecureStorage.java), [`strongbox/StrongboxPayload.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxPayload.java), [`strongbox/WalletEntryCodec.java`](app/src/main/java/com/quantumswap/app/strongbox/WalletEntryCodec.java) |
 
 ### 2. On-disk slot layout (L1)
 
@@ -499,7 +499,7 @@ invariant tests.
 
 The slot file is a single canonical UTF-8 JSON object built by
 the hand-rolled `canonicalize` / `writeCanonical` serializer in
-[`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxFileCodec.java)
+[`strongbox/StrongboxFileCodec.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxFileCodec.java)
 to guarantee the same sorted-key byte sequence iOS produces with
 `JSONSerialization(opts:[.sortedKeys])`. There are no fixed
 binary offsets at the slot layer.
@@ -545,9 +545,9 @@ indirectly via `uiBlockHash = SHA-256(canonical(ui))`.
 
 | Primitive | Parameters | Source |
 | --- | --- | --- |
-| AEAD | AES-256-GCM via `javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")`. Nonce 12 bytes, random per seal (`SecureRandom.nextBytes`). Tag 16 bytes (128 bits). AAD: empty | [`keystorage/Aead.java`](app/src/main/java/com/quantumcoin/app/keystorage/Aead.java) |
-| KDF | scrypt with `N = 262144 (2^18)`, `r = 8`, `p = 1`, `dkLen = 32`. Salt 32 bytes generated by `SecureRandom.nextBytes` at strongbox bootstrap, persisted in `kdf.salt`, then reused for the lifetime of the strongbox. The scrypt implementation is the JS SDK's `scryptSync` invoked through the bridge | [`keystorage/UnlockCoordinator.java`](app/src/main/java/com/quantumcoin/app/keystorage/UnlockCoordinator.java) `deriveKeyViaScrypt`, [`assets/bridge.html`](app/src/main/assets/bridge.html) `scryptDerive` |
-| File MAC | HMAC-SHA-256 (32-byte tag) via JCE `javax.crypto.Mac` | [`keystorage/MacUtil.java`](app/src/main/java/com/quantumcoin/app/keystorage/MacUtil.java) |
+| AEAD | AES-256-GCM via `javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")`. Nonce 12 bytes, random per seal (`SecureRandom.nextBytes`). Tag 16 bytes (128 bits). AAD: empty | [`keystorage/Aead.java`](app/src/main/java/com/quantumswap/app/keystorage/Aead.java) |
+| KDF | scrypt with `N = 262144 (2^18)`, `r = 8`, `p = 1`, `dkLen = 32`. Salt 32 bytes generated by `SecureRandom.nextBytes` at strongbox bootstrap, persisted in `kdf.salt`, then reused for the lifetime of the strongbox. The scrypt implementation is the JS SDK's `scryptSync` invoked through the bridge | [`keystorage/UnlockCoordinator.java`](app/src/main/java/com/quantumswap/app/keystorage/UnlockCoordinator.java) `deriveKeyViaScrypt`, [`assets/bridge.html`](app/src/main/assets/bridge.html) `scryptDerive` |
+| File MAC | HMAC-SHA-256 (32-byte tag) via JCE `javax.crypto.Mac` | [`keystorage/MacUtil.java`](app/src/main/java/com/quantumswap/app/keystorage/MacUtil.java) |
 | MAC-key derivation | `macKey = HKDF-SHA-256(IKM = mainKey, salt = kdf.salt, info = "integrity-v2", L = 32)` via BouncyCastle `HKDFBytesGenerator` (RFC 5869 Extract+Expand). BouncyCastle is FIPS 140-2 certified and eliminates hand-rolled Extract+Expand loops. Byte-exact compatible with iOS CryptoKit `HKDF<SHA256>` | constant `MacUtil.INTEGRITY_INFO_LABEL` |
 
 `mainKey` is a fresh 32-byte value produced once at strongbox
@@ -571,7 +571,7 @@ unpad(7816-4) ──► canonicalJSON(StrongboxPayload)
 - `derivedKey` is materialised inside every `unlock` and every
   `persist` call. It is wiped via
   `Arrays.fill(derivedKey, (byte) 0);` in a `finally` block in
-  the same scope ([`UnlockCoordinator.java`](app/src/main/java/com/quantumcoin/app/keystorage/UnlockCoordinator.java)).
+  the same scope ([`UnlockCoordinator.java`](app/src/main/java/com/quantumswap/app/keystorage/UnlockCoordinator.java)).
 - `mainKey` is materialised on each unlock and on each persist.
   It is wiped in the same `finally` block. It is **never**
   stored on a field after the function exits — the persist
@@ -596,7 +596,7 @@ The 4 MiB bucket comfortably holds ≥256 wallets with
 Dilithium-class private keys (≈7.5 KiB raw) and public keys
 (≈2.5 KiB raw). Round-trip and bucket-fill invariants are
 tested in
-[`strongbox/StrongboxPaddingTest.java`](app/src/test/java/com/quantumcoin/app/strongbox/StrongboxPaddingTest.java)
+[`strongbox/StrongboxPaddingTest.java`](app/src/test/java/com/quantumswap/app/strongbox/StrongboxPaddingTest.java)
 and the `WalletEntryCodecTest` 256-wallet packing test.
 
 ### 7. Plaintext payload (L5)
@@ -607,7 +607,7 @@ shape. The shape is unified across Android and iOS: same field
 names, same ordering rules, same encoding of the per-wallet
 binary blobs. Canonical sorted keys are used for the inner
 checksum compute (`disableHtmlEscaping`, `serializeNulls` per
-[`strongbox/StrongboxPayload.java`](app/src/main/java/com/quantumcoin/app/strongbox/StrongboxPayload.java));
+[`strongbox/StrongboxPayload.java`](app/src/main/java/com/quantumswap/app/strongbox/StrongboxPayload.java));
 the AEAD seal does not require a canonical encoding because the
 AEAD tag commits to the byte sequence.
 
@@ -663,9 +663,9 @@ Each entry inside `wallets[<idxStr>]` is a base64-wrapped
 length-prefixed binary blob. **All multi-byte integers are
 big-endian.** This format is shared byte-for-byte with the iOS
 wallet — see
-[`strongbox/WalletEntryCodec.java`](app/src/main/java/com/quantumcoin/app/strongbox/WalletEntryCodec.java)
+[`strongbox/WalletEntryCodec.java`](app/src/main/java/com/quantumswap/app/strongbox/WalletEntryCodec.java)
 and the round-trip + 256-wallet packing tests in
-[`strongbox/WalletEntryCodecTest.java`](app/src/test/java/com/quantumcoin/app/strongbox/WalletEntryCodecTest.java).
+[`strongbox/WalletEntryCodecTest.java`](app/src/test/java/com/quantumswap/app/strongbox/WalletEntryCodecTest.java).
 
 | Offset | Field | Width | Encoding |
 | --- | --- | --- | --- |
@@ -697,7 +697,7 @@ base64 wrap and length-prefixes raw bytes directly.
 | --- | --- |
 | In-slot field | `generation` integer in the outer JSON (incremented by exactly +1 per `writeNewGeneration`) |
 | Out-of-band binding | HMAC-SHA-256 over the 8-byte big-endian counter under an AndroidKeystore-resident, non-extractable key (alias `qc-strongbox-generation-counter-hmac-v1`). The counter+tag pair is persisted as `"<counter>:<base64(tag)>"` in `SharedPreferences` file `qc_strongbox_counter_v1`, key `STRONGBOX_GENERATION_COUNTER` |
-| Implementation | [`keystorage/AndroidKeystoreGenerationCounter.java`](app/src/main/java/com/quantumcoin/app/keystorage/AndroidKeystoreGenerationCounter.java); StrongBox-backed when `setIsStrongBoxBacked(true)` succeeds (API ≥ 28), software-Keystore otherwise |
+| Implementation | [`keystorage/AndroidKeystoreGenerationCounter.java`](app/src/main/java/com/quantumswap/app/keystorage/AndroidKeystoreGenerationCounter.java); StrongBox-backed when `setIsStrongBoxBacked(true)` succeeds (API ≥ 28), software-Keystore otherwise |
 | On unlock | `UnlockCoordinator` rejects the slot if `slotGeneration < storedCounter` AFTER verifying the stored tag matches the stored counter under the Keystore key |
 | Heal-forward | A first-launch device with no stored counter seeds it from the slot's `generation` so a fresh restore-from-Auto-Backup is accepted; subsequent rollback attempts are rejected. The pref file is excluded from Auto-Backup so a migrated device always re-seeds from the restored slot |
 
@@ -716,14 +716,14 @@ delay; 5 → 30 s; 6 → 60 s; 7 → 120 s; ≥8 capped at 300 s. The
 limiter is consulted at strongbox-unlock and at backup-decrypt
 on the same shared counter so the restore dialog cannot be used
 to bypass the unlock-dialog rate limit. Source:
-[`security/UnlockAttemptLimiter.java`](app/src/main/java/com/quantumcoin/app/security/UnlockAttemptLimiter.java).
+[`security/UnlockAttemptLimiter.java`](app/src/main/java/com/quantumswap/app/security/UnlockAttemptLimiter.java).
 
 ### 11. Out-of-strongbox metadata (`PrefConnect`)
 
 The non-secret app preferences live in app-private
 `SharedPreferences` file
 `DP_QUANTUM_COIN_WALLET_APP_PREF.xml`, managed by
-[`utils/PrefConnect.java`](app/src/main/java/com/quantumcoin/app/utils/PrefConnect.java).
+[`utils/PrefConnect.java`](app/src/main/java/com/quantumswap/app/utils/PrefConnect.java).
 The allowlist:
 
 | Key | Reason it is here, not in the strongbox |
@@ -767,7 +767,7 @@ counter is heal-forwarded from the restored slot's `generation`
 field.
 
 The runtime gate in
-[`backup/WalletBackupAgent.java`](app/src/main/java/com/quantumcoin/app/backup/WalletBackupAgent.java)
+[`backup/WalletBackupAgent.java`](app/src/main/java/com/quantumswap/app/backup/WalletBackupAgent.java)
 inspects `BACKUP_ENABLED_KEY` before delegating to
 `super.onFullBackup`, so even with `android:allowBackup="true"`
 in the manifest nothing leaves the device unless the user
@@ -777,10 +777,10 @@ explicitly opted in from the in-app Settings UI.
 
 The user-facing **per-wallet backup file** (`UTC--<timestamp>--<addr>.wallet`)
 is a different format. It is produced and consumed by the
-shared `QuantumCoinSDK.Wallet.encryptSync` /
-`Wallet.decryptSync` calls in `quantumcoin-bundle.js`, called
+shared `QuantumSwapSDK.Wallet.encryptSync` /
+`Wallet.decryptSync` calls in `quantumswap-bundle.js`, called
 from
-[`bridge/QuantumCoinJSBridge.java`](app/src/main/java/com/quantumcoin/app/bridge/QuantumCoinJSBridge.java).
+[`bridge/QuantumSwapJSBridge.java`](app/src/main/java/com/quantumswap/app/bridge/QuantumSwapJSBridge.java).
 It is a Web3-Secret-Storage-style JSON blob (scrypt KDF, AES +
 MAC, address-bound) keyed by a user-supplied **backup
 password** that is collected separately from the strongbox
@@ -788,7 +788,7 @@ password and may legitimately differ. The `.wallet` envelope is
 byte-equivalent across iOS and Android (both call the same JS
 SDK), which is why the per-wallet backup file format **is**
 cross-platform restorable. See
-[`backup/CloudBackupManager.java`](app/src/main/java/com/quantumcoin/app/backup/CloudBackupManager.java)
+[`backup/CloudBackupManager.java`](app/src/main/java/com/quantumswap/app/backup/CloudBackupManager.java)
 for the file naming and folder enumeration; the JSON shape
 itself is owned by the SDK package.
 
@@ -796,8 +796,8 @@ itself is owned by the SDK package.
 
 The binding portability contract is the seeded vector suite:
 
-- Android: `app/src/test/java/com/quantumcoin/app/strongbox/StrongboxPortabilityVectorTest.java`
-- iOS: `QuantumCoinWalletTests/StrongboxLayerTests.swift`
+- Android: `app/src/test/java/com/quantumswap/app/strongbox/StrongboxPortabilityVectorTest.java`
+- iOS: `QuantumSwapWalletTests/StrongboxLayerTests.swift`
 - Shared seed note: `tests/fixtures/strongbox-v3-vectors/INDEX.md`
 
 The tests derive inputs at runtime with
@@ -824,8 +824,8 @@ state around it.
 
 Per-wallet `.wallet` backup files (the cloud / file backup format
 the user sees in the Backup screen) remain portable too, because
-both apps call the same `QuantumCoinSDK.Wallet.encryptSync` /
-`decryptSync` inside `quantumcoin-bundle.js` under the same backup
+both apps call the same `QuantumSwapSDK.Wallet.encryptSync` /
+`decryptSync` inside `quantumswap-bundle.js` under the same backup
 password.
 
 ### How portability is enforced
@@ -909,7 +909,7 @@ the seeded vector suite pins it byte-for-byte.
 ## SDKs and dependencies
 
 The Android wallet's runtime cryptography ships entirely in **a
-single bundled JavaScript file** (`quantumcoin-bundle.js`,
+single bundled JavaScript file** (`quantumswap-bundle.js`,
 ≈12.3 MiB, MIT-licensed) loaded into a `WebView`. The Java
 dependencies are limited to standard AndroidX, Material
 Components, OkHttp/Gson for the read-only scan API, ML Kit +
@@ -920,7 +920,7 @@ consumes:
 
 | Global | Purpose | Used in Android |
 | --- | --- | --- |
-| `QuantumCoinSDK` | Wallet construction, address helpers, JSON-RPC provider, IERC20 contract helper, scrypt KDF, AEAD wallet envelopes | [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) (~36 callsites) |
+| `QuantumSwapSDK` | Wallet construction, address helpers, JSON-RPC provider, IERC20 contract helper, scrypt KDF, AEAD wallet envelopes | [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) (~36 callsites) |
 | `SeedWordsSDK` | BIP39-style seed-word lookup tables | [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) (4 callsites — `getWordListFromSeedArray`, `getAllSeedWords`, `doesSeedWordExist`) |
 
 Both globals are produced upstream from two distinct SDK packages:
@@ -931,7 +931,7 @@ Both globals are produced upstream from two distinct SDK packages:
 | `quantum-coin-js-sdk` | <https://github.com/quantumcoinproject/quantum-coin-js-sdk> | The lower-level Quantum Coin JS SDK (npm: `quantum-coin-js-sdk`) that `quantumcoin.js` builds on. Provides the chain-specific primitives (post-quantum signing, encrypted-wallet JSON envelope, scrypt KDF). |
 
 The Android wallet only ever consumes the **curated
-`quantumcoin-bundle.js`** — **no Java code reaches into either
+`quantumswap-bundle.js`** — **no Java code reaches into either
 upstream package directly**. Adding a new SDK symbol means
 re-exporting it from the bundle, not pulling an upstream package
 into Java, so the SHA-256 pin and the Android-iOS parity contract
@@ -940,18 +940,18 @@ stay meaningful.
 The bundle is built locally from
 [`webview-sdk-bundle/`](webview-sdk-bundle/) via webpack
 (`npm install && npx webpack`), and the resulting
-`app/src/main/assets/quantumcoin-bundle.js` is byte-identical to
+`app/src/main/assets/quantumswap-bundle.js` is byte-identical to
 the one shipped by the iOS wallet at
-`QuantumCoinWallet/Resources/quantumcoin-bundle.js`.
+`QuantumSwapWallet/Resources/quantumswap-bundle.js`.
 
 ### Runtime libraries used
 
 | Library | Used for |
 | --- | --- |
 | `androidx.appcompat` / `material` / `constraintlayout` / `recyclerview` / `cardview` | Every screen, every dialog |
-| `androidx.webkit` + `WebView` | The single in-process `WebView` that hosts `bridge.html` ([`bridge/WebViewManager.java`](app/src/main/java/com/quantumcoin/app/bridge/WebViewManager.java)) |
-| Java `javax.crypto` (AES-GCM) + `java.security` (SHA-256, HMAC) | AES-256-GCM seal/open, hashing, file MAC ([`keystorage/Aead.java`](app/src/main/java/com/quantumcoin/app/keystorage/Aead.java)) |
-| BouncyCastle (`org.bouncycastle:bcprov-jdk18on`) | FIPS 140-2 certified HKDF-SHA-256 implementation (RFC 5869 Extract+Expand) for MAC-key derivation. Eliminates hand-rolled cryptography. Byte-exact compatible with iOS CryptoKit ([`keystorage/MacUtil.java`](app/src/main/java/com/quantumcoin/app/keystorage/MacUtil.java)) |
+| `androidx.webkit` + `WebView` | The single in-process `WebView` that hosts `bridge.html` ([`bridge/WebViewManager.java`](app/src/main/java/com/quantumswap/app/bridge/WebViewManager.java)) |
+| Java `javax.crypto` (AES-GCM) + `java.security` (SHA-256, HMAC) | AES-256-GCM seal/open, hashing, file MAC ([`keystorage/Aead.java`](app/src/main/java/com/quantumswap/app/keystorage/Aead.java)) |
+| BouncyCastle (`org.bouncycastle:bcprov-jdk18on`) | FIPS 140-2 certified HKDF-SHA-256 implementation (RFC 5869 Extract+Expand) for MAC-key derivation. Eliminates hand-rolled cryptography. Byte-exact compatible with iOS CryptoKit ([`keystorage/MacUtil.java`](app/src/main/java/com/quantumswap/app/keystorage/MacUtil.java)) |
 | AndroidKeystore | Generation-counter HMAC key, brute-force-lockout key |
 | `com.squareup.okhttp3` + `com.google.code.gson` + `io.gsonfire` + `io.swagger:swagger-annotations` | Read-only scan-API client (no signing primitives in Java) |
 | `androidx.camera:camera-*` + `com.google.mlkit:barcode-scanning` | Camera-based QR scanning |
@@ -959,7 +959,7 @@ the one shipped by the iOS wallet at
 | `androidx.lifecycle:lifecycle-viewmodel` | Per-screen ViewModels |
 | `androidx.localbroadcastmanager` | Process-local network-change pub/sub (no cross-app signal) |
 | `androidx.documentfile` | Storage-Access-Framework backup folder enumeration |
-| `com.jakewharton.timber` | Logger backend (wrapped behind the in-house [`Logger`](app/src/main/java/com/quantumcoin/app/Logger.java) facade) |
+| `com.jakewharton.timber` | Logger backend (wrapped behind the in-house [`Logger`](app/src/main/java/com/quantumswap/app/Logger.java) facade) |
 
 ### Build tooling
 
@@ -975,7 +975,7 @@ the one shipped by the iOS wallet at
   `<trusted-artifacts>` regex with a `reason` annotation, since
   they cannot influence the runtime classpath.
 - **`embedBundleHash` Gradle task** — recomputes the SHA-256 of
-  `app/src/main/assets/quantumcoin-bundle.js` at build time and
+  `app/src/main/assets/quantumswap-bundle.js` at build time and
   regenerates `GeneratedBundleHash.java` so the constant inside
   `classes.dex` stays in lockstep with the shipping bundle bytes.
   Wired as a `preBuild` dependency.
@@ -1023,15 +1023,15 @@ the one shipped by the iOS wallet at
                │
 ┌──────────────▼─────────────────┐  ┌───────────────────────────────┐
 │      JsBridge (Java)           │◄─┤    bridge.html (WebView)      │
-│  bridge/QuantumCoinJSBridge,   │  │    quantumcoin-bundle.js      │
-│  bridge/WebViewManager,        │  │    (QuantumCoinSDK +          │
+│  bridge/QuantumSwapJSBridge,   │  │    quantumswap-bundle.js      │
+│  bridge/WebViewManager,        │  │    (QuantumSwapSDK +          │
 │  security/BundleIntegrity      │  │     SeedWordsSDK globals)     │
 └────────────────────────────────┘  └───────────────────────────────┘
 ```
 
 The strict layering is enforced by the storage / crypto / bridge
 separation in code review and by invariant tests in
-[`app/src/test/java/com/quantumcoin/app/strongbox/StrongboxPaddingTest.java`](app/src/test/java/com/quantumcoin/app/strongbox/StrongboxPaddingTest.java)
+[`app/src/test/java/com/quantumswap/app/strongbox/StrongboxPaddingTest.java`](app/src/test/java/com/quantumswap/app/strongbox/StrongboxPaddingTest.java)
 and the broader test suite. The only structurally-permitted
 writers of wallet-meaningful state are the
 `SecureStorage` accessor and the `UnlockCoordinator` re-encrypt
@@ -1065,8 +1065,8 @@ contract documented in
         │   ├── AndroidManifest.xml
         │   ├── assets/
         │   │   ├── bridge.html                       JS bridge (the only HTML the WebView loads)
-        │   │   ├── quantumcoin-bundle.js             The single JS SDK bundle (SHA-256 pinned)
-        │   │   └── quantumcoin-bundle.js.LICENSE.txt
+        │   │   ├── quantumswap-bundle.js             The single JS SDK bundle (SHA-256 pinned)
+        │   │   └── quantumswap-bundle.js.LICENSE.txt
         │   ├── res/
         │   │   ├── drawable/, drawable-v24/, font/, layout/, menu/
         │   │   ├── mipmap-*/                         Launcher icons
@@ -1076,14 +1076,14 @@ contract documented in
         │   │   ├── values/, values-night/            Themes, colors, strings, dark mode
         │   │   └── xml/                              backup_rules, data_extraction_rules,
         │   │                                         network_security_config
-        │   └── java/com/quantumcoin/app/
+        │   └── java/com/quantumswap/app/
         │       ├── App.java                          Application boot + tamper gate plant
         │       ├── Logger.java                       Logger facade (release-safe)
         │       ├── RedactingDebugTree.java           Timber tree with redaction regex set
         │       ├── api/                              Read-only scan-API client (Gson)
         │       ├── asynctask/                        Background workers
         │       ├── backup/                           CloudBackupManager + WalletBackupAgent
-        │       ├── bridge/                           WebViewManager, QuantumCoinJSBridge, BridgeCallback
+        │       ├── bridge/                           WebViewManager, QuantumSwapJSBridge, BridgeCallback
         │       ├── entity/                           POJO entities
         │       ├── events/                           NetworkChangeBroadcaster (LocalBroadcastManager)
         │       ├── interact/                         JsonInteract (localization accessors)
@@ -1107,12 +1107,12 @@ contract documented in
         │       │   ├── fragment/                     13 top-level Fragments
         │       │   └── widget/                       Custom views
         │       └── viewmodel/                        Per-screen ViewModels
-        └── test/java/com/quantumcoin/app/      29 test classes, 183 tests
+        └── test/java/com/quantumswap/app/      29 test classes, 183 tests
 ```
 
 Counts (at the time of writing): 113 Java source files in
 `app/src/main`, 29 test classes (183 unit tests), 833-line
-`bridge.html`, 12 MiB `quantumcoin-bundle.js`, 230+ localization
+`bridge.html`, 12 MiB `quantumswap-bundle.js`, 230+ localization
 keys.
 
 ---
@@ -1140,7 +1140,7 @@ need a system-wide Gradle install.
 ### Generate, build, run
 
 ```bash
-git clone https://github.com/quantumcoinproject/quantum-coin-wallet-android.git
+git clone https://github.com/quantumcoinproject/quantumswap-wallet-android.git
 cd quantum-coin-wallet-android
 
 # Optional but recommended: rebuild the JS bundle from source so
@@ -1157,8 +1157,8 @@ cd quantum-coin-wallet-android
 
 The first build runs the `embedBundleHash` Gradle task, which
 writes
-[`app/src/main/java/com/quantumcoin/app/security/generated/GeneratedBundleHash.java`](app/src/main/java/com/quantumcoin/app/security/generated/GeneratedBundleHash.java)
-so the SHA-256 of `quantumcoin-bundle.js` is embedded in
+[`app/src/main/java/com/quantumswap/app/security/generated/GeneratedBundleHash.java`](app/src/main/java/com/quantumswap/app/security/generated/GeneratedBundleHash.java)
+so the SHA-256 of `quantumswap-bundle.js` is embedded in
 `classes.dex`. **The generated file IS committed** so the constant
 can be diffed alongside the bundle bytes in the same PR; the build
 fails loudly if the file is stale relative to the shipping bundle.
@@ -1187,13 +1187,13 @@ Release builds:
   APK verification.
 
 The output APK is named
-`QuantumCoin-wallet-<versionName>-<buildType>.apk` so debug and
+`QuantumSwap-wallet-<versionName>-<buildType>.apk` so debug and
 release variants don't collide on CI and the artifact is
 self-identifying when downloaded off a release.
 
 ### Updating the JS bundle
 
-`quantumcoin-bundle.js` is built from the
+`quantumswap-bundle.js` is built from the
 [`webview-sdk-bundle/`](webview-sdk-bundle/) module via webpack
 with the upstream `quantumcoin.js` and `quantum-coin-js-sdk`
 packages. After rebuilding:
@@ -1202,14 +1202,14 @@ packages. After rebuilding:
 cd webview-sdk-bundle
 npm install
 npx webpack
-# webpack writes ../app/src/main/assets/quantumcoin-bundle.js
+# webpack writes ../app/src/main/assets/quantumswap-bundle.js
 cd ..
 ./gradlew :app:assembleDebug
 ```
 
 The next build regenerates `GeneratedBundleHash.java`
 automatically. Verify the new hex matches the iOS sibling repo's
-[`QuantumCoinWallet/Generated/BundleHash_Generated.swift`](https://github.com/quantumcoinproject/quantum-coin-wallet-ios/blob/main/QuantumCoinWallet/Generated/BundleHash_Generated.swift)
+[`QuantumSwapWallet/Generated/BundleHash_Generated.swift`](https://github.com/quantumcoinproject/quantumswap-wallet-ios/blob/main/QuantumSwapWallet/Generated/BundleHash_Generated.swift)
 to confirm cross-platform bundle parity in the same commit.
 
 ---
@@ -1221,7 +1221,7 @@ to confirm cross-platform bundle parity in the same commit.
 ```
 
 The test target lives in
-[`app/src/test/java/com/quantumcoin/app/`](app/src/test/java/com/quantumcoin/app).
+[`app/src/test/java/com/quantumswap/app/`](app/src/test/java/com/quantumswap/app).
 It contains 29 test classes and 183 unit tests:
 
 | Suite | Coverage |
@@ -1307,7 +1307,7 @@ configuration stays resolvable in IDE syncs).
   + strict default hostname verification still apply on RPC
   traffic (so a downgrade-to-TLS-1.2 attacker is rejected even
   on user-chosen RPC endpoints). See
-  [`security/TlsPinning.java`](app/src/main/java/com/quantumcoin/app/security/TlsPinning.java)
+  [`security/TlsPinning.java`](app/src/main/java/com/quantumswap/app/security/TlsPinning.java)
   for the full coverage map.
 - **Defending an unlocked, rooted, attacker-owned device with a
   Frida-class hook injected before the wallet process loads.**
@@ -1324,7 +1324,7 @@ configuration stays resolvable in IDE syncs).
   shipping list to a classical signature scheme would
   contradict the project's cryptographic posture; see the
   Javadoc on
-  [`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumcoin/app/tokens/RecognizedTokens.java)
+  [`tokens/RecognizedTokens.java`](app/src/main/java/com/quantumswap/app/tokens/RecognizedTokens.java)
   for the rationale.
 - **Investment, custody, or financial advice of any kind.**
 
@@ -1334,9 +1334,9 @@ configuration stays resolvable in IDE syncs).
 
 [MIT](LICENSE) — see the file for details.
 
-The bundled `quantumcoin-bundle.js` and its embedded third-party
+The bundled `quantumswap-bundle.js` and its embedded third-party
 libraries are MIT-licensed (see
-[`app/src/main/assets/quantumcoin-bundle.js.LICENSE.txt`](app/src/main/assets/quantumcoin-bundle.js.LICENSE.txt)).
+[`app/src/main/assets/quantumswap-bundle.js.LICENSE.txt`](app/src/main/assets/quantumswap-bundle.js.LICENSE.txt)).
 
 ---
 
@@ -1351,7 +1351,7 @@ libraries are MIT-licensed (see
 - **Quantum Coin Go node (open source):**
   <https://github.com/quantumcoinproject/quantum-coin-go>
 - **iOS wallet (parity reference):**
-  <https://github.com/quantumcoinproject/quantum-coin-wallet-ios>
+  <https://github.com/quantumcoinproject/quantumswap-wallet-ios>
 - **`quantumcoin.js` (ethers.js-compatible wrapper SDK):**
   <https://github.com/quantumcoinproject/quantumcoin.js>
 - **`quantum-coin-js-sdk` (lower-level upstream SDK, npm package):**
