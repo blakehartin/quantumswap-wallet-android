@@ -220,8 +220,10 @@ public final class TransactionReviewDialog {
 
         int btnH = dp(ctx, 43);
         int btnPad = dp(ctx, 5);
+        // White labels on the glass button fills (the old colorCommon7
+        // rendered near-black on the dark theme).
         int textColor = androidx.core.content.ContextCompat.getColor(
-                ctx, com.quantumswap.app.R.color.colorCommon7);
+                ctx, com.quantumswap.app.R.color.colorWhite);
 
         Button cancel = new Button(ctx);
         cancel.setText(safe(vm.getCancelByLangValues(), "Cancel"));

@@ -7,14 +7,11 @@
 
             <item android:bottom="2dp" android:left="2dp">
                 <shape>
-                    <!-- Teal primary-CTA fill, desktop - -btn: 20,184,166. -->
-                    <gradient android:angle="90"
-                        android:startColor="@color/quantumTeal"
-                        android:centerColor="@color/quantumTeal"
-                        android:endColor="@color/quantumTeal" />
-
-                    <stroke android:width="1dp" android:color="@color/quantumTeal" />
-                    <corners android:radius="16dp" />
+                    <!-- Teal glass primary CTA, desktop theme-quantum.css
+                         (btn: 20,184,166): 16% fill, 65% stroke, 9dp radius. -->
+                    <solid android:color="#2914B8A6" />
+                    <stroke android:width="1dp" android:color="#A614B8A6" />
+                    <corners android:radius="9dp" />
                     <padding android:bottom="10dp" android:left="10dp"
                         android:right="10dp" android:top="10dp" />
 

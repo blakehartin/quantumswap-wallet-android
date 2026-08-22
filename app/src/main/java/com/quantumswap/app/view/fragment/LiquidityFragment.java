@@ -13,7 +13,6 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -25,6 +24,7 @@ import com.quantumswap.app.utils.CoinUtils;
 import com.quantumswap.app.utils.DexPayloads;
 import com.quantumswap.app.utils.GlobalMethods;
 import com.quantumswap.app.view.dialog.DexUnlockPrompt;
+import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.view.widget.TokenPickerController;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
@@ -63,6 +63,15 @@ public class LiquidityFragment extends Fragment {
     private EditText slippageEditText;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    /** Signing keys loaded once per tx-steps dialog session. */
+    private String[] sessionKeys;
+
+    /** Small callback for the pre-flight allowance checks that decide
+     *  the step plan. */
+    private interface BoolConsumer {
+        void accept(boolean value);
+    }
 
     public static LiquidityFragment newInstance() {
         return new LiquidityFragment();
@@ -113,11 +122,11 @@ public class LiquidityFragment extends Fragment {
 
         String customLabel = jsonViewModel.lang("custom-contract-address", "Custom...");
         tokenAPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_liquidity_tokenA),
+                (Button) view.findViewById(R.id.spinner_liquidity_tokenA),
                 (EditText) view.findViewById(R.id.editText_liquidity_tokenA_custom),
                 walletAddress, customLabel);
         tokenBPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_liquidity_tokenB),
+                (Button) view.findViewById(R.id.spinner_liquidity_tokenB),
                 (EditText) view.findViewById(R.id.editText_liquidity_tokenB_custom),
                 walletAddress, customLabel);
 
@@ -255,24 +264,23 @@ public class LiquidityFragment extends Fragment {
                         return;
                     }
                     final int pctFinal = pct;
-                    DexUnlockPrompt.show(getActivity(), jsonViewModel,
-                            password -> runRemoveFlow(pos, pctFinal));
+                    runRemoveFlow(pos, pctFinal);
                 })
                 .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> d.dismiss())
                 .show();
     }
 
+    /** Desktop tx-steps model for Remove: compute the burn amounts
+     *  (no keys needed), pre-check the LP-token allowance, then run
+     *  [Approve LP?] [Remove Liquidity] through the steps dialog. */
     private void runRemoveFlow(final JSONObject pos, final int percent) {
         setBusy(true);
-        final Context appCtx = getActivity().getApplicationContext();
         new Thread(() -> {
             try {
-                final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-
                 // Integer math mirrors desktop liquidity-tx.ts: burn
                 // share of each reserve, then slippage tolerance.
                 BigInteger lpBalance = new BigInteger(pos.optString("lpBalance", "0"));
-                BigInteger liquidity = lpBalance
+                final BigInteger liquidity = lpBalance
                         .multiply(BigInteger.valueOf(percent))
                         .divide(BigInteger.valueOf(100));
                 if (liquidity.signum() <= 0) {
@@ -284,13 +292,39 @@ public class LiquidityFragment extends Fragment {
                 BigInteger reserve1 = new BigInteger(pos.optString("reserve1", "0"));
                 long slipBps = Math.round(slippagePercent() * 100);
                 BigInteger keep = BigInteger.valueOf(10000 - slipBps);
-                BigInteger amountAMin = reserve0.multiply(liquidity).divide(totalSupply)
+                final BigInteger amountAMin = reserve0.multiply(liquidity).divide(totalSupply)
                         .multiply(keep).divide(BigInteger.valueOf(10000));
-                BigInteger amountBMin = reserve1.multiply(liquidity).divide(totalSupply)
+                final BigInteger amountBMin = reserve1.multiply(liquidity).divide(totalSupply)
                         .multiply(keep).divide(BigInteger.valueOf(10000));
-
                 final String pairAddress = pos.optString("pairAddress", "");
-                final JSONObject submit = DexPayloads.withKeys(appCtx, keys[0], keys[1]);
+
+                mainHandler.post(() -> checkNeedsApproval(pairAddress, liquidity,
+                        needsApprove -> {
+                            setBusy(false);
+                            showRemoveSteps(pos, pairAddress, liquidity,
+                                    amountAMin, amountBMin, needsApprove);
+                        }));
+            } catch (Exception e) {
+                mainHandler.post(() -> failFlow(e.getMessage()));
+            }
+        }).start();
+    }
+
+    private void showRemoveSteps(final JSONObject pos, final String pairAddress,
+                                 final BigInteger liquidity, final BigInteger amountAMin,
+                                 final BigInteger amountBMin, boolean needsApprove) {
+        String removeLabel = jsonViewModel.lang("remove-liquidity", "Remove Liquidity");
+        java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
+        if (needsApprove) {
+            steps.add(new TxStepsDialog.Step(
+                    jsonViewModel.lang("step-approve", "Approve") + " LP",
+                    cb -> runApproveStep(pairAddress, liquidity, cb)));
+        }
+        steps.add(new TxStepsDialog.Step(removeLabel, cb -> withSessionKeys(() -> {
+            try {
+                cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
+                JSONObject submit = DexPayloads.withKeys(getContext(),
+                        sessionKeys[0], sessionKeys[1]);
                 submit.put("tokenAAddress", pos.optString("token0", ""));
                 submit.put("tokenBAddress", pos.optString("token1", ""));
                 submit.put("liquidityWei", liquidity.toString());
@@ -298,15 +332,27 @@ public class LiquidityFragment extends Fragment {
                 submit.put("amountBMinWei", amountBMin.toString());
                 submit.put("ownerAddress", walletAddress);
                 submit.put("gasLimit", 300000);
-
-                final BigInteger liquidityFinal = liquidity;
-                mainHandler.post(() -> ensureAllowanceThen(keys, pairAddress,
-                        liquidityFinal, () -> submitDex("liquiditySubmitRemove", submit,
-                                jsonViewModel.lang("remove-liquidity", "Remove Liquidity"))));
+                KeyViewModel.getBridge().dexCallAsync("liquiditySubmitRemove", submit,
+                        uiCallback(data -> {
+                            cb.txHash(data.optString("txHash", ""));
+                            cb.status(jsonViewModel.lang("transaction-submitted",
+                                    "Transaction submitted."));
+                            cb.done();
+                        }));
             } catch (Exception e) {
-                mainHandler.post(() -> failFlow(e.getMessage()));
+                cb.fail(e.getMessage());
             }
-        }).start();
+        }, cb)));
+        sessionKeys = null;
+        new TxStepsDialog(getContext(),
+                removeLabel,
+                jsonViewModel.lang("transaction-id", "Transaction ID"),
+                jsonViewModel.getOkByLangValues(),
+                steps,
+                () -> {
+                    sessionKeys = null;
+                    loadPositions();
+                }).show();
     }
 
     // ---------------------------------------------------------------
@@ -369,103 +415,155 @@ public class LiquidityFragment extends Fragment {
         }
     }
 
+    /** Desktop tx-steps model: pre-check both ERC20 sides' allowances
+     *  to build the step plan ([Approve A?] [Approve B?] [Add]), then
+     *  drive it through the shared steps dialog. Native "Q" sides need
+     *  no approval (they travel as addLiquidityETH value). */
     private void unlockThenAdd() {
-        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
-            final Context appCtx = getActivity().getApplicationContext();
-            new Thread(() -> {
-                try {
-                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                    mainHandler.post(() -> approveSideAThen(keys));
-                } catch (Exception e) {
-                    mainHandler.post(() -> failFlow(e.getMessage()));
-                }
-            }).start();
-        });
-    }
-
-    private void approveSideAThen(final String[] keys) {
-        String tokenA = tokenAPicker.getTokenValue();
-        if ("Q".equals(tokenA)) {
-            // Native side goes through addLiquidityETH's value field;
-            // no ERC20 approval exists for it.
-            approveSideBThen(keys);
-            return;
-        }
-        BigInteger required = new BigInteger(
+        final String tokenA = tokenAPicker.getTokenValue();
+        final String tokenB = tokenBPicker.getTokenValue();
+        final BigInteger requiredA = "Q".equals(tokenA) ? null : new BigInteger(
                 CoinUtils.parseUnits(text(amountAEditText), tokenAPicker.getDecimals()));
-        ensureAllowanceThen(keys, tokenA, required, () -> approveSideBThen(keys));
+        final BigInteger requiredB = "Q".equals(tokenB) ? null : new BigInteger(
+                CoinUtils.parseUnits(text(amountBEditText), tokenBPicker.getDecimals()));
+        checkNeedsApproval(tokenA, requiredA, needsA ->
+                checkNeedsApproval(tokenB, requiredB, needsB -> {
+                    setBusy(false);
+                    showAddSteps(needsA, needsB, tokenA, tokenB, requiredA, requiredB);
+                }));
     }
 
-    private void approveSideBThen(final String[] keys) {
-        String tokenB = tokenBPicker.getTokenValue();
-        if ("Q".equals(tokenB)) {
-            submitAdd(keys);
+    private void checkNeedsApproval(final String tokenAddress, final BigInteger requiredWei,
+                                    final BoolConsumer onResult) {
+        if (requiredWei == null) {
+            onResult.accept(false);
             return;
         }
-        BigInteger required = new BigInteger(
-                CoinUtils.parseUnits(text(amountBEditText), tokenBPicker.getDecimals()));
-        ensureAllowanceThen(keys, tokenB, required, () -> submitAdd(keys));
-    }
-
-    private void submitAdd(final String[] keys) {
-        try {
-            JSONObject payload = DexPayloads.withKeys(getContext(), keys[0], keys[1]);
-            payload.put("tokenAValue", tokenAPicker.getTokenValue());
-            payload.put("tokenBValue", tokenBPicker.getTokenValue());
-            payload.put("amountA", text(amountAEditText));
-            payload.put("amountB", text(amountBEditText));
-            payload.put("decimalsA", tokenAPicker.getDecimals());
-            payload.put("decimalsB", tokenBPicker.getDecimals());
-            payload.put("slippagePercent", slippagePercent());
-            payload.put("ownerAddress", walletAddress);
-            payload.put("gasLimit", 300000);
-            submitDex("liquiditySubmitAdd", payload,
-                    jsonViewModel.lang("add-liquidity", "Add Liquidity"));
-        } catch (Exception e) {
-            failFlow(e.getMessage());
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Shared allowance/approve/poll chain (ERC20 sides and LP tokens)
-    // ---------------------------------------------------------------
-
-    private void ensureAllowanceThen(final String[] keys, final String tokenAddress,
-                                     final BigInteger requiredWei, final Runnable onReady) {
         try {
             JSONObject payload = DexPayloads.base();
             payload.put("tokenAddress", tokenAddress);
             payload.put("requiredAmountWei", requiredWei.toString());
             payload.put("ownerAddress", walletAddress);
             KeyViewModel.getBridge().dexCallAsync("liquidityCheckAllowance", payload,
-                    uiCallback(data -> {
-                        if (data.optBoolean("sufficient", false)) {
-                            onReady.run();
-                            return;
-                        }
-                        setStatus(jsonViewModel.lang("step-approve", "Approve") + ": "
-                                + shortAddr(tokenAddress));
-                        JSONObject approve = DexPayloads.withKeys(getContext(), keys[0], keys[1]);
-                        approve.put("tokenAddress", tokenAddress);
-                        approve.put("gasLimit", 84000);
-                        KeyViewModel.getBridge().dexCallAsync("liquiditySubmitApprove", approve,
-                                uiCallback(approveData -> {
-                                    setStatus(jsonViewModel.lang("swap-approval-status-pending",
-                                            "Transaction is still pending..."));
-                                    pollAllowance(tokenAddress, requiredWei, onReady, 0);
-                                }));
-                    }));
+                    uiCallback(data ->
+                            onResult.accept(!data.optBoolean("sufficient", false))));
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void pollAllowance(final String tokenAddress, final BigInteger requiredWei,
-                               final Runnable onReady, final int attempt) {
+    private void showAddSteps(boolean needsA, boolean needsB,
+                              final String tokenA, final String tokenB,
+                              final BigInteger requiredA, final BigInteger requiredB) {
+        String approveLabel = jsonViewModel.lang("step-approve", "Approve");
+        java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
+        if (needsA) {
+            steps.add(new TxStepsDialog.Step(
+                    approveLabel + " " + sanitize(tokenAPicker.getSymbol()),
+                    cb -> runApproveStep(tokenA, requiredA, cb)));
+        }
+        if (needsB) {
+            steps.add(new TxStepsDialog.Step(
+                    approveLabel + " " + sanitize(tokenBPicker.getSymbol()),
+                    cb -> runApproveStep(tokenB, requiredB, cb)));
+        }
+        steps.add(new TxStepsDialog.Step(
+                jsonViewModel.lang("add-liquidity", "Add Liquidity"),
+                this::runAddStep));
+        sessionKeys = null;
+        new TxStepsDialog(getContext(),
+                jsonViewModel.lang("add-liquidity", "Add Liquidity"),
+                jsonViewModel.lang("transaction-id", "Transaction ID"),
+                jsonViewModel.getOkByLangValues(),
+                steps,
+                () -> {
+                    sessionKeys = null;
+                    loadPositions();
+                }).show();
+    }
+
+    private void withSessionKeys(final Runnable onReady,
+                                 final TxStepsDialog.StepCallbacks cb) {
+        if (sessionKeys != null) {
+            onReady.run();
+            return;
+        }
+        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
+            final Context appCtx = getActivity().getApplicationContext();
+            new Thread(() -> {
+                try {
+                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
+                    mainHandler.post(() -> {
+                        sessionKeys = keys;
+                        onReady.run();
+                    });
+                } catch (Exception e) {
+                    mainHandler.post(() -> cb.fail(e.getMessage()));
+                }
+            }).start();
+        }, cb::cancelled);
+    }
+
+    private void runApproveStep(final String tokenAddress, final BigInteger requiredWei,
+                                final TxStepsDialog.StepCallbacks cb) {
+        withSessionKeys(() -> {
+            try {
+                JSONObject approve = DexPayloads.withKeys(getContext(),
+                        sessionKeys[0], sessionKeys[1]);
+                approve.put("tokenAddress", tokenAddress);
+                approve.put("gasLimit", 84000);
+                KeyViewModel.getBridge().dexCallAsync("liquiditySubmitApprove", approve,
+                        uiCallback(approveData -> {
+                            cb.status(jsonViewModel.lang("swap-approval-status-pending",
+                                    "Transaction is still pending..."));
+                            cb.confirming(jsonViewModel.lang("tx-step-confirming",
+                                    "Confirming..."));
+                            pollAllowanceStep(tokenAddress, requiredWei, cb, 0);
+                        }));
+            } catch (Exception e) {
+                cb.fail(e.getMessage());
+            }
+        }, cb);
+    }
+
+    private void runAddStep(final TxStepsDialog.StepCallbacks cb) {
+        withSessionKeys(() -> {
+            try {
+                cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
+                JSONObject payload = DexPayloads.withKeys(getContext(),
+                        sessionKeys[0], sessionKeys[1]);
+                payload.put("tokenAValue", tokenAPicker.getTokenValue());
+                payload.put("tokenBValue", tokenBPicker.getTokenValue());
+                payload.put("amountA", text(amountAEditText));
+                payload.put("amountB", text(amountBEditText));
+                payload.put("decimalsA", tokenAPicker.getDecimals());
+                payload.put("decimalsB", tokenBPicker.getDecimals());
+                payload.put("slippagePercent", slippagePercent());
+                payload.put("ownerAddress", walletAddress);
+                payload.put("gasLimit", 300000);
+                KeyViewModel.getBridge().dexCallAsync("liquiditySubmitAdd", payload,
+                        uiCallback(data -> {
+                            cb.txHash(data.optString("txHash", ""));
+                            cb.status(jsonViewModel.lang("transaction-submitted",
+                                    "Transaction submitted."));
+                            cb.done();
+                        }));
+            } catch (Exception e) {
+                cb.fail(e.getMessage());
+            }
+        }, cb);
+    }
+
+    private void pollAllowanceStep(final String tokenAddress, final BigInteger requiredWei,
+                                   final TxStepsDialog.StepCallbacks cb, final int attempt) {
         if (attempt >= POLL_MAX_ATTEMPTS) {
-            failFlow(jsonViewModel.lang("swap-approval-may-close",
+            cb.fail(jsonViewModel.lang("swap-approval-may-close",
                     "You may close this dialog, the transaction for approval has already been submitted."));
             return;
+        }
+        if (attempt > 2) {
+            cb.status(jsonViewModel.lang("swap-approval-status-minute",
+                    "This can take up to a minute..."));
         }
         mainHandler.postDelayed(() -> {
             if (getActivity() == null) return;
@@ -485,44 +583,24 @@ public class LiquidityFragment extends Fragment {
                                                 .getJSONObject("data")
                                                 .optBoolean("sufficient", false);
                                     } catch (Exception ignore) { }
-                                    if (sufficient) onReady.run();
-                                    else pollAllowance(tokenAddress, requiredWei, onReady, attempt + 1);
+                                    if (sufficient) cb.done();
+                                    else pollAllowanceStep(tokenAddress, requiredWei, cb, attempt + 1);
                                 });
                             }
                             @Override public void onError(String error) {
-                                mainHandler.post(() ->
-                                        pollAllowance(tokenAddress, requiredWei, onReady, attempt + 1));
+                                mainHandler.post(() -> pollAllowanceStep(
+                                        tokenAddress, requiredWei, cb, attempt + 1));
                             }
                         });
             } catch (Exception e) {
-                failFlow(e.getMessage());
+                cb.fail(e.getMessage());
             }
         }, POLL_INTERVAL_MS);
     }
 
-    private void submitDex(String method, JSONObject payload, final String successTitle) {
-        try {
-            setStatus(jsonViewModel.getSubmittingTransactionByLangValues());
-            KeyViewModel.getBridge().dexCallAsync(method, payload,
-                    uiCallback(data -> {
-                        setBusy(false);
-                        clearStatus();
-                        String txHash = data.optString("txHash", "");
-                        new AlertDialog.Builder(getContext())
-                                .setTitle(successTitle)
-                                .setMessage(jsonViewModel.lang("transaction-submitted",
-                                        "Transaction submitted.") + "\n\n" + txHash)
-                                .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                                        (d, w) -> {
-                                            d.dismiss();
-                                            loadPositions();
-                                        })
-                                .show();
-                    }));
-        } catch (Exception e) {
-            failFlow(e.getMessage());
-        }
-    }
+    // (The pre-steps ensureAllowance/poll/submit chain was replaced by
+    // the TxStepsDialog-driven flow above, mirroring the desktop
+    // #modalTxSteps model.)
 
     // ---------------------------------------------------------------
     // Helpers

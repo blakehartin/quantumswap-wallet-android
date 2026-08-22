@@ -3,6 +3,7 @@ package com.quantumswap.app.tokens;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -103,17 +104,78 @@ public final class RecognizedTokens {
     public static final String Y2Q =
             "0xa8036870874fbed790ed4d3bbd41b2f390b9858ff021f2993e90c6d1cbb167c7";
 
+    /** Lion (Lio). */
+    public static final String LION =
+            "0x4015b40b181f2415003f24118b215ce04f276509176eccb10e0c4a9ccbd458d2";
+
+    /** Tiger (tig). */
+    public static final String TIGER =
+            "0x6ff70c260458c9f448ec7aab008f1611456d58edb12e7795bf88735e1986a6ad";
+
+    /** Cat (cat). */
+    public static final String CAT =
+            "0x592a8abb1de07bc3797bc3c592fc74c099c5a311ba856fc66fb6d4cfc18c728d";
+
+    /** panther (pant). */
+    public static final String PANTHER =
+            "0x05fe2265b69d0c70a24075180242736c7389876b8917f38400e6540519e663df";
+
+    /** Wrapped Q (WQ, Beta2 release). */
+    public static final String WRAPPED_Q =
+            "0x45bd01be5ef8509d9da183689ea7faf647331c54c7c9801de54c9ede9ac44d92";
+
     /**
      * Lower-cased, immutable set of all recognized contract
      * addresses; computed once at class-init time so each
      * {@link #isRecognized(String)} call is a single Set lookup.
+     * Mirrors desktop src/lib/tokenfilter.ts
+     * RECOGNIZED_TOKEN_ADDRESSES (7 entries).
      */
     public static final Set<String> ALL = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
                     HEISEN.toLowerCase(Locale.ROOT),
-                    Y2Q.toLowerCase(Locale.ROOT))));
+                    Y2Q.toLowerCase(Locale.ROOT),
+                    LION.toLowerCase(Locale.ROOT),
+                    TIGER.toLowerCase(Locale.ROOT),
+                    CAT.toLowerCase(Locale.ROOT),
+                    PANTHER.toLowerCase(Locale.ROOT),
+                    WRAPPED_Q.toLowerCase(Locale.ROOT))));
+
+    /**
+     * Recognized contract addresses in a stable, deliberate display
+     * order. Used by pickers that surface the full allow-list even
+     * when the account holds none of the tokens (e.g. the Swap "To"
+     * picker, where the user is acquiring a token they do not own
+     * yet). {@link #ALL} stays the membership-test structure; this
+     * list exists only so the UI ordering is not left to hash order.
+     */
+    public static final List<String> LISTED = Collections.unmodifiableList(
+            Arrays.asList(HEISEN, Y2Q, LION, TIGER, CAT, PANTHER, WRAPPED_Q));
 
     private RecognizedTokens() { }
+
+    /**
+     * Wallet-vouched ticker for a recognized contract, for rows the
+     * scan API has no entry for (the account holds none of the token
+     * so {@code listAccountTokens} never returned its symbol). These
+     * strings ship in the binary next to the address constants and are
+     * display-only: amount math still uses bridge-resolved decimals,
+     * never anything derived from the symbol.
+     *
+     * @return the ticker ("HSN", "Y2Q"), or {@code null} when the
+     *     address is not in the allow-list.
+     */
+    public static String displaySymbol(String contract) {
+        if (contract == null) return null;
+        if (contract.equalsIgnoreCase(HEISEN)) return "HSN";
+        if (contract.equalsIgnoreCase(Y2Q)) return "Y2Q";
+        if (contract.equalsIgnoreCase(LION)) return "Lio";
+        if (contract.equalsIgnoreCase(TIGER)) return "tig";
+        if (contract.equalsIgnoreCase(CAT)) return "cat";
+        if (contract.equalsIgnoreCase(PANTHER)) return "pant";
+        if (contract.equalsIgnoreCase(WRAPPED_Q)) return "WQ";
+        return null;
+    }
 
     /**
      * @return {@code true} iff the given contract address is in the

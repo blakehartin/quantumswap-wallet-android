@@ -1,6 +1,18 @@
 const path = require('path');
 const webpack = require('webpack');
 
+// quantumcoin 8.x / quantumswap 1.x / seed-words 1.1.x are browser-clean:
+// randomness and hashing go through WebCrypto and the SDK's self-contained
+// WASM (shipped as base64 inside quantum-coin-js-sdk), so no Node-builtin
+// polyfills, resolve fallbacks, or module replacements are configured —
+// same pattern as the desktop wallet. The single stub below is the one
+// exception: quantumcoin's optional IPC socket provider lazily requires
+// `node:net` (guarded by try/catch at runtime), and webpack 5 treats the
+// node: scheme as unresolvable in web targets (neither the SDK's own
+// `browser: { "node:net": false }` field nor resolve.fallback intercepts
+// a schemed request), so the plugin strips the prefix and the fallback
+// maps the result to an empty module. Any future dependency that pulls
+// in another Node builtin will fail this build loudly.
 module.exports = {
   entry: './src/index.js',
   output: {
@@ -12,46 +24,15 @@ module.exports = {
     },
   },
   target: 'web',
-  resolve: {
-    // quantumcoin 8.x / quantumswap 1.x / seed-words 1.1.x are browser-clean:
-    // randomness and hashing go through WebCrypto and the bundled WASM SDK,
-    // so no crypto/stream/buffer polyfills are required anymore. The only
-    // Node builtin the dependency graph can still mention is the optional
-    // IPC socket provider (node:net), which must resolve to an empty module
-    // inside the WebView. Everything else is stubbed out defensively so a
-    // future dependency bump fails the build loudly instead of silently
-    // pulling a Node builtin into the bundle.
-    fallback: {
-      net: false,
-      'node:net': false,
-      fs: false,
-      path: false,
-      crypto: false,
-      stream: false,
-      http: false,
-      https: false,
-      os: false,
-      vm: false,
-      zlib: false,
-      tls: false,
-      child_process: false,
-      dns: false,
-      readline: false,
-      url: false,
-    },
-  },
   plugins: [
-    new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
-      resource.request = resource.request.replace(/^node:/, '');
+    new webpack.NormalModuleReplacementPlugin(/^node:net$/, (resource) => {
+      resource.request = 'net';
     }),
   ],
-  module: {
-    rules: [
-      {
-        test: /\.wasm$/,
-        type: 'asset/inline',
-      },
-    ],
+  resolve: {
+    fallback: {
+      net: false,
+    },
   },
   performance: {
     maxAssetSize: 16 * 1024 * 1024,

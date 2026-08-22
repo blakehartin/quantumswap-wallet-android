@@ -56,8 +56,8 @@
                 android:layout_width="35dp"
                 android:layout_height="35dp"
                 android:layout_gravity="center"
-                app:cardBackgroundColor="@color/quantumAccent"
-                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="#FF396F"
+                app:cardCornerRadius="10dp"
                 app:cardElevation="12dp">
 
                 <ImageView
@@ -67,7 +67,8 @@
                     android:padding="5dp"
                     android:gravity="center"
                     android:background="@drawable/image_selector"
-                    android:src="@drawable/address_explore"/>
+                    android:src="@drawable/address_explore"
+                    app:tint="@color/colorWhite"/>
 
             </androidx.cardview.widget.CardView>
 
@@ -91,8 +92,8 @@
                 android:layout_width="35dp"
                 android:layout_height="35dp"
                 android:layout_gravity="center"
-                app:cardBackgroundColor="@color/quantumTeal"
-                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="#008000"
+                app:cardCornerRadius="10dp"
                 app:cardElevation="12dp">
 
                 <ImageView
@@ -102,7 +103,8 @@
                     android:padding="7dp"
                     android:gravity="center"
                     android:background="@drawable/image_selector"
-                    android:src="@drawable/backup_outline"/>
+                    android:src="@drawable/backup_outline"
+                    app:tint="@color/colorWhite"/>
 
             </androidx.cardview.widget.CardView>
 
@@ -126,8 +128,8 @@
                 android:layout_width="35dp"
                 android:layout_height="35dp"
                 android:layout_gravity="center"
-                app:cardBackgroundColor="@color/quantumAccentSoft"
-                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="#FF00DB"
+                app:cardCornerRadius="10dp"
                 app:cardElevation="12dp">
 
                 <ImageView
@@ -137,7 +139,8 @@
                     android:padding="10dp"
                     android:gravity="center"
                     android:background="@drawable/image_selector"
-                    android:src="@drawable/show_password_selector"/>
+                    android:src="@drawable/show_password_selector"
+                    app:tint="@color/colorWhite"/>
 
             </androidx.cardview.widget.CardView>
 

@@ -65,8 +65,13 @@ s = s.replace(
 //   privBytes = pullPayloadBinary(requestId, 'privKey');
 //   pubBytes = pullPayloadBinary(requestId, 'pubKey');
 // with a helper-backed version that also accepts JSON.
-const keyPull = `privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+// NOTE: pullPayloadBinary THROWS on a missing token (Android never
+// injects tokens), so each call must be try/catch-guarded or the JSON
+// fallback below it is unreachable ("binary pull: no token" errors).
+const keyPull = `privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -75,6 +80,50 @@ const keyPull = `privBytes = (typeof pullPayloadBinary === 'function' ? pullPayl
 const keyPullRe = /privBytes = pullPayloadBinary\(requestId, 'privKey'\);\s*\n\s*pubBytes = pullPayloadBinary\(requestId, 'pubKey'\);/g;
 const n = (s.match(keyPullRe) || []).length;
 s = s.replace(keyPullRe, keyPull);
+
+// Outbound (JS -> native) wallet-creation keys. The iOS-origin
+// stageWalletKeysBinary stages secrets on the WKWebView binary channel
+// (tokens injected by JsEngine.swift); Android has neither the tokens
+// nor window.webkit, so every wallet-creation handler threw
+// "binary push: no token for <rid>/privateKey". Replace it with a
+// platform-gated version: binary channel when window.webkit exists
+// (iOS), base64 envelope fields otherwise (Android Java callers read
+// data.privateKey / data.publicKey). Call sites must merge the return
+// value into their sendResult envelope.
+const stageReplacement = `function stageWalletKeysBinary(requestId, wallet) {
+ var hasBinaryChannel = !!(window.webkit
+   && window.webkit.messageHandlers
+   && window.webkit.messageHandlers.androidBridge);
+ if (hasBinaryChannel) {
+  stagePendingResultBinary(requestId, 'privateKey',
+    wallet.signingKey.privateKeyBytes);
+  stagePendingResultBinary(requestId, 'publicKey',
+    wallet.signingKey.publicKeyBytes);
+  return {};
+ }
+ return {
+  privateKey: bytesToBase64(wallet.signingKey.privateKeyBytes),
+  publicKey: bytesToBase64(wallet.signingKey.publicKeyBytes)
+ };
+}`;
+const stageRe = /function stageWalletKeysBinary\(requestId, wallet\) \{[\s\S]*?\n\}/;
+if (!stageRe.test(s)) {
+  console.error('stageWalletKeysBinary not found');
+  process.exit(1);
+}
+s = s.replace(stageRe, stageReplacement);
+
+// Call sites: merge the fallback fields into the result envelope.
+// Simple form: stage + extractWalletInfo.
+s = s.replace(
+  /stageWalletKeysBinary\(requestId, wallet\);\s*\n\s*sendResult\(requestId, extractWalletInfo\(wallet\)\);/g,
+  'sendResult(requestId, Object.assign(extractWalletInfo(wallet),\n   stageWalletKeysBinary(requestId, wallet)));'
+);
+// Custom-envelope form: stage + object literal.
+s = s.replace(
+  /stageWalletKeysBinary\(requestId, wallet\);\s*\n(\s*)sendResult\(requestId, \{([\s\S]*?)\}\);/g,
+  'var extraKeys = stageWalletKeysBinary(requestId, wallet);\n$1sendResult(requestId, Object.assign({$2}, extraKeys));'
+);
 
 // Ensure bundle script tag points at quantumswap-bundle.js
 s = s.replace(/quantumcoin-bundle\.js/g, 'quantumswap-bundle.js');

@@ -171,8 +171,6 @@
                                         android:layout_height="match_parent"
                                         android:layout_weight="1"
                                         android:scrollbars="horizontal"
-                                        android:scrollbarAlwaysDrawHorizontalTrack="true"
-                                        android:fadeScrollbars="false"
                                         android:fillViewport="true">
 
                                         <LinearLayout

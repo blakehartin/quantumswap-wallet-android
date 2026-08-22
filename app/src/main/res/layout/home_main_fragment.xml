@@ -65,6 +65,7 @@
             account_transactions_fragment.xml.
         -->
         <LinearLayout
+            android:id="@+id/tokenList_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginLeft="10dp"
@@ -89,19 +90,13 @@
                     NOT on the RecognizedTokens allow-list. Mirrors iOS
                     HomeMainViewController.tokensSegmentedControl.
 
-                    Visual styling mirrors the Completed / Pending tabs in
-                    AccountTransactionsFragment: both children share an
-                    equal-weight slot inside the RadioGroup and use the
-                    shared @drawable/toggle_selector background so the
-                    currently-selected segment renders with the same 2dp
-                    underline highlight that flags an active tab elsewhere
-                    in the app. RadioGroup keeps mutual-exclusion semantics
-                    (state_checked drives the selector automatically); the
-                    text colour and typeface are swapped in code by
-                    HomeMainFragment.onCheckedChanged so the selected label
-                    reads bold-purple (colorCommon2) and the inactive label
-                    reads regular-gray (colorCommon3), which matches the
-                    transactions tabs one-for-one.
+                    Visual styling mirrors the DESKTOP token tabs
+                    (app.ts renderTokenTabs): no background fill in any
+                    state - the active tab gets only a 2dp green
+                    underline (@drawable/segment_underline via
+                    state_checked) and a bold typeface (swapped in code
+                    by HomeMainFragment.applyTokenSegmentSelectionStyle;
+                    both labels keep the same body-text colour).
 
                     Lives inside the card (above the table header strip)
                     in the same slot the Completed / Pending tabs occupy
@@ -128,8 +123,8 @@
                         android:textAllCaps="false"
                         android:textSize="14dp"
                         android:textStyle="bold"
-                        android:textColor="@color/colorCommon2"
-                        android:background="@drawable/toggle_selector" />
+                        android:textColor="@color/colorCommon6"
+                        android:background="@drawable/segment_underline" />
 
                     <RadioButton
                         android:id="@+id/radio_tokenList_unrecognized"
@@ -142,8 +137,8 @@
                         android:paddingBottom="6dp"
                         android:textAllCaps="false"
                         android:textSize="14dp"
-                        android:textColor="@color/colorCommon3"
-                        android:background="@drawable/toggle_selector" />
+                        android:textColor="@color/colorCommon6"
+                        android:background="@drawable/segment_underline" />
 
                 </RadioGroup>
 
@@ -175,8 +170,6 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:scrollbars="horizontal"
-                    android:scrollbarAlwaysDrawHorizontalTrack="true"
-                    android:fadeScrollbars="false"
                     android:fillViewport="true">
 
                     <!--

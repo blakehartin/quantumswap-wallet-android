@@ -148,13 +148,22 @@
                         android:textSize="14dp"
                         android:textColor="@color/colorCommon3" />
 
-                    <Spinner
+                    <Button
                         android:id="@+id/spinner_liquidity_tokenA"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="@drawable/spinner_dropdown_background"
-                        android:padding="10dp" />
+                        android:minHeight="40dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingBottom="7dp"
+                        android:gravity="start|center_vertical"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:textColor="@color/colorWhite"
+                        android:drawableEnd="@drawable/caret_down_outline"
+                        android:background="@drawable/token_picker_trigger_bg" />
 
                     <EditText
                         android:id="@+id/editText_liquidity_tokenA_custom"
@@ -190,13 +199,22 @@
                         android:textSize="14dp"
                         android:textColor="@color/colorCommon3" />
 
-                    <Spinner
+                    <Button
                         android:id="@+id/spinner_liquidity_tokenB"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="@drawable/spinner_dropdown_background"
-                        android:padding="10dp" />
+                        android:minHeight="40dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingBottom="7dp"
+                        android:gravity="start|center_vertical"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:textColor="@color/colorWhite"
+                        android:drawableEnd="@drawable/caret_down_outline"
+                        android:background="@drawable/token_picker_trigger_bg" />
 
                     <EditText
                         android:id="@+id/editText_liquidity_tokenB_custom"

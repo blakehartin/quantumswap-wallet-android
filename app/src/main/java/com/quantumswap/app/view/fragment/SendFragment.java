@@ -1259,8 +1259,9 @@ public class SendFragment extends Fragment  {
                                 // Pass the locally-derived
                                 // tx hash through to the completion
                                 // dialog so the user gets a copy +
-                                // explorer affordance, not just OK.
-                                sendCompletedDialogFragment(context, txHash);
+                                // explorer affordance, not just OK -
+                                // plus the live confirmation poll.
+                                sendCompletedDialogFragment(context, fromAddress, txHash);
                             } catch (Exception e) {
                                 try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
                                 progressBar.setVisibility(View.GONE);
@@ -1473,13 +1474,120 @@ public class SendFragment extends Fragment  {
                 .replaceAll("[<>]", "");
     }
 
-    private void sendCompletedDialogFragment(Context context, final String txHash) {
+    /** Desktop-parity send-completed dialog (modalSendCompleted in
+     *  src/app/send.ts): one dialog that mutates in place - rotating
+     *  "Checking transaction status... / Waiting... / Checking..."
+     *  line (3.6s cycle) with a spinner, a scan-API status poll every
+     *  9s (page 0 of pending then completed transactions), and the
+     *  icon/text swap to success (green check) or failure (red alert)
+     *  the moment the transaction settles on-chain. */
+    private void sendCompletedDialogFragment(Context context, final String fromAddress,
+                                             final String txHash) {
         try {
             final AlertDialog dialog = new AlertDialog.Builder(getContext())
                     .setTitle((CharSequence) "").setView((int)
                             R.layout.send_completed_dialog_fragment).create();
             dialog.setCancelable(false);
             dialog.show();
+
+            TextView messageText = (TextView) dialog.findViewById(
+                    R.id.textView_send_completed_message);
+            if (messageText != null) {
+                messageText.setText(jsonViewModel.lang(
+                        "send-transaction-send-message-description",
+                        "Your transaction has been submitted. It can take upto a minute to process the transaction. You may close this dialog now."));
+            }
+
+            final android.widget.ProgressBar statusSpinner =
+                    (android.widget.ProgressBar) dialog.findViewById(
+                            R.id.progress_send_completed_status);
+            final android.widget.ImageView statusIcon =
+                    (android.widget.ImageView) dialog.findViewById(
+                            R.id.imageView_send_completed_status);
+            final TextView statusText = (TextView) dialog.findViewById(
+                    R.id.textView_send_completed_status);
+            final android.widget.ImageView bigCheck =
+                    (android.widget.ImageView) dialog.findViewById(
+                            R.id.imageView_send_completed_check);
+
+            final String[] rotatingStatuses = {
+                    jsonViewModel.lang("send-status-checking", "Checking transaction status..."),
+                    jsonViewModel.lang("send-status-waiting", "Waiting..."),
+                    jsonViewModel.lang("send-status-checking-short", "Checking...")
+            };
+            final android.os.Handler statusHandler =
+                    new android.os.Handler(android.os.Looper.getMainLooper());
+            final boolean[] settled = { false };
+            final long statusStart = android.os.SystemClock.uptimeMillis();
+            if (statusText != null) statusText.setText(rotatingStatuses[0]);
+
+            // Desktop SEND_STATUS_ROTATE_MS = 3600.
+            final Runnable rotateRunnable = new Runnable() {
+                @Override public void run() {
+                    if (settled[0]) return;
+                    int idx = (int) (((android.os.SystemClock.uptimeMillis() - statusStart)
+                            / 3600) % rotatingStatuses.length);
+                    if (statusText != null) statusText.setText(rotatingStatuses[idx]);
+                    statusHandler.postDelayed(this, 3600);
+                }
+            };
+
+            // Desktop polls every 9000ms plus one immediate check, with
+            // no attempt cap - the user can close the dialog any time.
+            final Runnable[] pollRef = new Runnable[1];
+            pollRef[0] = new Runnable() {
+                @Override public void run() {
+                    if (settled[0] || getActivity() == null) return;
+                    pollSendTxStatus(fromAddress, txHash, new SendStatusCallback() {
+                        @Override public void onStatus(String status, String error) {
+                            if (settled[0]) return;
+                            if ("succeeded".equals(status)) {
+                                settled[0] = true;
+                                statusHandler.removeCallbacksAndMessages(null);
+                                if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
+                                if (statusIcon != null) {
+                                    statusIcon.setImageResource(R.drawable.ic_status_success);
+                                    statusIcon.setVisibility(View.VISIBLE);
+                                }
+                                if (statusText != null) {
+                                    statusText.setText(jsonViewModel.lang(
+                                            "send-transaction-succeeded",
+                                            "Transaction completed successfully."));
+                                }
+                                if (bigCheck != null) bigCheck.setVisibility(View.VISIBLE);
+                            } else if ("failed".equals(status)) {
+                                settled[0] = true;
+                                statusHandler.removeCallbacksAndMessages(null);
+                                if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
+                                if (statusIcon != null) {
+                                    statusIcon.setImageResource(R.drawable.ic_status_failed);
+                                    statusIcon.setVisibility(View.VISIBLE);
+                                }
+                                if (statusText != null) {
+                                    String failed = jsonViewModel.lang(
+                                            "send-transaction-failed", "Transaction failed.");
+                                    if (error != null && !error.isEmpty()) {
+                                        failed += " " + sanitizeErrorMessage(error);
+                                    }
+                                    statusText.setText(failed);
+                                }
+                            } else {
+                                // pending / unknown: keep polling.
+                                statusHandler.postDelayed(pollRef[0], 9000);
+                            }
+                        }
+                    });
+                }
+            };
+
+            statusHandler.postDelayed(rotateRunnable, 3600);
+            pollRef[0].run();
+            dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+                @Override public void onDismiss(android.content.DialogInterface d) {
+                    settled[0] = true;
+                    statusHandler.removeCallbacksAndMessages(null);
+                }
+            });
 
             // Surface tx hash + copy + explorer if present.
             final TextView label = (TextView) dialog.findViewById(
@@ -1560,6 +1668,85 @@ public class SendFragment extends Fragment  {
         } catch (Exception e) {
             GlobalMethods.ExceptionError(getContext(), TAG, e);
         }
+    }
+
+    private interface SendStatusCallback {
+        void onStatus(String status, String error);
+    }
+
+    /** Desktop lib/api.ts getTransactionStatusByHash: page 0 of the
+     *  PENDING list first (hash there => still pending), then page 0
+     *  of the COMPLETED list (hash there => succeeded/failed by the
+     *  item's status field), otherwise unknown. API errors report
+     *  unknown so the caller keeps polling. */
+    private void pollSendTxStatus(final String address, final String txHash,
+                                  final SendStatusCallback cb) {
+        try {
+            new com.quantumswap.app.asynctask.read.AccountPendingTxnRestTask(getContext(),
+                    new com.quantumswap.app.asynctask.read.AccountPendingTxnRestTask.TaskListener() {
+                        @Override public void onFinished(
+                                com.quantumswap.app.api.read.model.AccountPendingTransactionSummaryResponse rsp) {
+                            if (rsp != null && rsp.getResult() != null) {
+                                for (com.quantumswap.app.api.read.model.AccountPendingTransactionSummary t
+                                        : rsp.getResult()) {
+                                    if (t != null && txHash.equalsIgnoreCase(t.getHash())) {
+                                        cb.onStatus("pending", null);
+                                        return;
+                                    }
+                                }
+                            }
+                            checkCompletedTxStatus(address, txHash, cb);
+                        }
+                        @Override public void onFailure(
+                                com.quantumswap.app.api.read.ApiException e) {
+                            cb.onStatus("unknown", null);
+                        }
+                    }).execute(address, "0");
+        } catch (Exception e) {
+            cb.onStatus("unknown", null);
+        }
+    }
+
+    private void checkCompletedTxStatus(String address, final String txHash,
+                                        final SendStatusCallback cb) {
+        try {
+            new com.quantumswap.app.asynctask.read.AccountTxnRestTask(getContext(),
+                    new com.quantumswap.app.asynctask.read.AccountTxnRestTask.TaskListener() {
+                        @Override public void onFinished(
+                                com.quantumswap.app.api.read.model.AccountTransactionSummaryResponse rsp) {
+                            if (rsp != null && rsp.getResult() != null) {
+                                for (com.quantumswap.app.api.read.model.AccountTransactionSummary t
+                                        : rsp.getResult()) {
+                                    if (t != null && txHash.equalsIgnoreCase(t.getHash())) {
+                                        cb.onStatus(isTxStatusSuccess(t.getStatus())
+                                                ? "succeeded" : "failed", null);
+                                        return;
+                                    }
+                                }
+                            }
+                            cb.onStatus("unknown", null);
+                        }
+                        @Override public void onFailure(
+                                com.quantumswap.app.api.read.ApiException e) {
+                            cb.onStatus("unknown", null);
+                        }
+                    }).execute(address, "0");
+        } catch (Exception e) {
+            cb.onStatus("unknown", null);
+        }
+    }
+
+    /** Desktop maps the raw txn.status == "0x1" to success; the
+     *  generated model surfaces status as an untyped Object, so accept
+     *  the boolean/number/string spellings of "1". */
+    private static boolean isTxStatusSuccess(Object status) {
+        if (status instanceof Boolean) return (Boolean) status;
+        if (status instanceof Number) return ((Number) status).intValue() == 1;
+        if (status != null) {
+            String s = String.valueOf(status).trim().toLowerCase(java.util.Locale.ROOT);
+            return s.equals("0x1") || s.equals("1") || s.equals("true");
+        }
+        return false;
     }
 
 

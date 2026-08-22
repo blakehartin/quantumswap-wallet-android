@@ -1,0 +1,50 @@
+<!-- Body background, ported from desktop theme-quantum.css: the bg
+     variable's near-black (#050508) with the two ambient orbs (.qs-orb-1
+     violet, top-left; .qs-orb-2 cyan, bottom-right). The CSS blur(48/55px)
+     is approximated by radial gradients that fade to transparent; the CSS
+     orb opacities (0.55 / 0.4) are pre-multiplied into the gradient stop
+     alphas. Each orb is painted as a full-viewport rect whose radial fill
+     fades out well inside the bounds, so there are no hard edges when the
+     vector stretches to arbitrary screen sizes. -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="1dp"
+    android:height="1dp"
+    android:viewportWidth="360"
+    android:viewportHeight="780">
+
+    <path
+        android:fillColor="#FF050508"
+        android:pathData="M0,0 H360 V780 H0 Z" />
+
+    <!-- Violet orb, top-left (.qs-orb-1: #6d15ff core -> transparent). -->
+    <path android:pathData="M0,0 H360 V780 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="10"
+                android:centerY="45"
+                android:gradientRadius="230">
+                <item android:color="#8C6D15FF" android:offset="0" />
+                <item android:color="#5F5C0FF3" android:offset="0.42" />
+                <item android:color="#005C0FF3" android:offset="0.7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Cyan orb, bottom-right (.qs-orb-2: #19e6ff core -> transparent). -->
+    <path android:pathData="M0,0 H360 V780 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="345"
+                android:centerY="750"
+                android:gradientRadius="260">
+                <item android:color="#6619E6FF" android:offset="0" />
+                <item android:color="#3800E5FF" android:offset="0.4" />
+                <item android:color="#0000E5FF" android:offset="0.7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop assets/svg/wallet-outline.svg (ionicon wallet-outline):
+     card body + strap flap + clasp dot. Rendered all-white like the
+     desktop burger menu (filter: brightness(0) invert(1)). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="32"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M96,144 h320 a48,48 0 0 1 48,48 v192 a48,48 0 0 1 -48,48 h-320 a48,48 0 0 1 -48,-48 v-192 a48,48 0 0 1 48,-48 z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="32"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M411.36,144 v-30 A50,50 0 0 0 352,64.9 L88.64,109.85 A50,50 0 0 0 48,159 v49" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M368,320 a32,32 0 1 1 32,-32 32,32 0 0 1 -32,32 z" />
+</vector>

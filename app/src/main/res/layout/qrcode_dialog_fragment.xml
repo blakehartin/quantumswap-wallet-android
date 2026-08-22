@@ -31,6 +31,8 @@
         android:layout_alignParentBottom="true"
         android:orientation="vertical">
 
+        <!-- Scanned address: black on this screen's LIGHT (#e0e0e6)
+             backdrop - white text was unreadable here. -->
         <TextView
             android:id="@+id/textView_qrcode"
             android:layout_width="match_parent"
@@ -39,7 +41,7 @@
             android:background="@android:color/transparent"
             android:maxLines="3"
             android:lines="3"
-            android:textColor="@color/colorCommon7"
+            android:textColor="@color/colorBlock"
             android:textAlignment="center"
             android:textSize="16sp" />
 
@@ -51,11 +53,9 @@
             android:layout_alignParentBottom="true"
             android:orientation="horizontal">
                 <!--
-                    Close button mirrors button_green_selector so the
-                    QR-code dialog's primary-action chrome is uniform
-                    with Next / Unlock / OK across the app. textColor
-                    stays at colorCommon7 so the label remains legible
-                    against the green pill in both themes.
+                    Solid teal (not the translucent glass selector):
+                    this screen's backdrop is light, and the 16%-alpha
+                    glass fill reads as a dim washed-out tint on it.
                 -->
                 <Button
                 android:id="@+id/button_qrcode_langValues_close"
@@ -65,8 +65,8 @@
                 android:layout_margin="1dp"
                 android:padding="5dp"
                 android:textAllCaps="false"
-                android:textColor="@color/colorCommon7"
-                android:background="@drawable/button_green_selector"/>
+                android:textColor="@color/colorWhite"
+                android:background="@drawable/button_solid_teal_selector"/>
 
                 <Button
                 android:id="@+id/button_qrcode_langValues_ok"
@@ -76,8 +76,8 @@
                 android:layout_margin="1dp"
                 android:padding="5dp"
                 android:textAllCaps="false"
-                android:textColor="@color/colorCommon7"
-                android:background="@drawable/button_green_selector"/>
+                android:textColor="@color/colorWhite"
+                android:background="@drawable/button_solid_teal_selector"/>
         </LinearLayout>
 
     </LinearLayout>

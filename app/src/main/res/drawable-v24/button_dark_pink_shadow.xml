@@ -4,13 +4,11 @@
         <layer-list>
             <item android:bottom="2dp" android:left="2dp">
                 <shape>
-                    <gradient android:angle="90"
-                        android:startColor="@color/colorCommon9"
-                        android:centerColor="@color/colorCommon9"
-                        android:endColor="@color/colorCommon9" />
-
-                    <stroke android:width="1dp" android:color="@color/colorCommon9" />
-                    <corners android:radius="16dp" />
+                    <!-- Red glass cancel/destructive, desktop .cancel:
+                         rgba(255,90,100,0.12) fill, 45% stroke, 9dp radius. -->
+                    <solid android:color="#1FFF5A64" />
+                    <stroke android:width="1dp" android:color="#73FF5A64" />
+                    <corners android:radius="9dp" />
                     <padding android:bottom="10dp" android:left="10dp"
                         android:right="10dp" android:top="10dp" />
 

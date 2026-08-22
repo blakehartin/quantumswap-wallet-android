@@ -41,20 +41,24 @@ public class AdvancedFragment extends Fragment {
 
         ImageButton backArrow = view.findViewById(R.id.imageButton_advanced_back_arrow);
         TextView title = view.findViewById(R.id.textView_advanced_title);
+        Button tokensButton = view.findViewById(R.id.button_advanced_tokens);
         Button liquidityButton = view.findViewById(R.id.button_advanced_liquidity);
         Button poolsButton = view.findViewById(R.id.button_advanced_pools);
 
         title.setText(jsonViewModel.lang("advanced", "Advanced"));
+        tokensButton.setText(jsonViewModel.lang("adv-tokens", "Tokens"));
         liquidityButton.setText(jsonViewModel.lang("adv-liquidity", "Liquidity"));
         poolsButton.setText(jsonViewModel.lang("adv-pools", "Pools"));
 
         backArrow.setOnClickListener(v -> mListener.onAdvancedCompleteByBackArrow());
+        tokensButton.setOnClickListener(v -> mListener.onAdvancedCompleteByTokens());
         liquidityButton.setOnClickListener(v -> mListener.onAdvancedCompleteByLiquidity());
         poolsButton.setOnClickListener(v -> mListener.onAdvancedCompleteByPools());
     }
 
     public interface OnAdvancedCompleteListener {
         void onAdvancedCompleteByBackArrow();
+        void onAdvancedCompleteByTokens();
         void onAdvancedCompleteByLiquidity();
         void onAdvancedCompleteByPools();
     }

@@ -28,6 +28,7 @@
             android:id="@+id/scrollview_send"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:scrollbars="none"
             android:clipToPadding="false">
 
         <RelativeLayout
@@ -340,7 +341,7 @@
                             android:layout_gravity="center_vertical|right"
                             android:padding="5dp"
                             android:textAllCaps="false"
-                            android:textColor="@color/colorCommon7" />
+                            android:textColor="@color/colorWhite" />
 
                  </LinearLayout>
 

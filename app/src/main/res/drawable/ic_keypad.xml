@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keypad glyph for the Advanced drawer entry (desktop burger uses
+     assets/svg/keypad.svg): 3x3 dot grid. Tinted at the usage site. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,4 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M10,4 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M16,4 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M4,10 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M10,10 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M16,10 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M4,16 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M10,16 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M16,16 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>

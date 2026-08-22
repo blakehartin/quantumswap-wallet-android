@@ -239,17 +239,36 @@ function stagePendingResultBinary(rid, key, uint8) {
  }
 }
 
-// Stage privateKey + publicKey on the inbound (JS -> Swift)
-// binary channel and return the metadata-only envelope that
-// `sendResult` will JSON-stringify. Used by the wallet-creation
-// handlers (`createRandom`, `walletFromSeed`, `walletFromPhrase`,
-// `walletFromKeys`) so the secret bytes never appear in the
-// `sendResult` JSON envelope.
+// Stage privateKey + publicKey for the wallet-creation handlers
+// (`createRandom`, `walletFromSeed`, `walletFromPhrase`,
+// `walletFromKeys`) and return the extra envelope fields the caller
+// must merge into its `sendResult` data.
+// - iOS: secrets go over the inbound (JS -> Swift) binary channel
+//   (tokens injected by JsEngine.swift, pushed via
+//   window.webkit.messageHandlers), so they never appear in the
+//   JSON envelope; returns {}.
+// - Android: there is no binary channel (no window.webkit, no token
+//   injection), and the Java callers (HomeWalletFragment etc.) read
+//   base64 `privateKey` / `publicKey` straight off the JSON
+//   envelope - the same JSON-base64 fallback the Android adaptation
+//   already uses for the opposite (Java -> JS) key direction. Without
+//   this fallback every wallet-creation call died with
+//   "binary push: no token for <rid>/privateKey".
 function stageWalletKeysBinary(requestId, wallet) {
- stagePendingResultBinary(requestId, 'privateKey',
-   wallet.signingKey.privateKeyBytes);
- stagePendingResultBinary(requestId, 'publicKey',
-   wallet.signingKey.publicKeyBytes);
+ var hasBinaryChannel = !!(window.webkit
+   && window.webkit.messageHandlers
+   && window.webkit.messageHandlers.androidBridge);
+ if (hasBinaryChannel) {
+  stagePendingResultBinary(requestId, 'privateKey',
+    wallet.signingKey.privateKeyBytes);
+  stagePendingResultBinary(requestId, 'publicKey',
+    wallet.signingKey.publicKeyBytes);
+  return {};
+ }
+ return {
+  privateKey: bytesToBase64(wallet.signingKey.privateKeyBytes),
+  publicKey: bytesToBase64(wallet.signingKey.publicKeyBytes)
+ };
 }
 
 function extractWalletInfo(wallet) {
@@ -480,14 +499,14 @@ var bridge = {
  }
  // Stage privateKey/publicKey on the binary channel
  // BEFORE sendResult so Swift sees them when it consumes the
- // envelope. The JSON envelope carries only address + seed
- // metadata; the secret bytes never enter the JSON string pool.
- stageWalletKeysBinary(requestId, wallet);
- sendResult(requestId, {
+ // envelope (on Android the returned fallback fields carry
+ // them base64 inside the envelope instead).
+ var extraKeys = stageWalletKeysBinary(requestId, wallet);
+ sendResult(requestId, Object.assign({
  address: wallet.address,
  seed: seedHex,
  seedWords: words
- });
+ }, extraKeys));
  } catch (e) {
  sendError(requestId, e);
  }
@@ -500,9 +519,9 @@ var bridge = {
  payload = pullPayload(requestId);
  if (!payload) return;
  var wallet = await QuantumSwapSDK.Wallet.fromSeed(payload.seedArray);
- // Secrets via binary channel; envelope carries address only.
- stageWalletKeysBinary(requestId, wallet);
- sendResult(requestId, extractWalletInfo(wallet));
+ // Secrets via binary channel (iOS) or envelope base64 (Android).
+ sendResult(requestId, Object.assign(extractWalletInfo(wallet),
+   stageWalletKeysBinary(requestId, wallet)));
  } catch (e) {
  sendError(requestId, e);
  } finally {
@@ -519,9 +538,9 @@ var bridge = {
  payload = pullPayload(requestId);
  if (!payload) return;
  var wallet = await QuantumSwapSDK.Wallet.fromPhrase(payload.words);
- // Secrets via binary channel.
- stageWalletKeysBinary(requestId, wallet);
- sendResult(requestId, extractWalletInfo(wallet));
+ // Secrets via binary channel (iOS) or envelope base64 (Android).
+ sendResult(requestId, Object.assign(extractWalletInfo(wallet),
+   stageWalletKeysBinary(requestId, wallet)));
  } catch (e) {
  sendError(requestId, e);
  } finally {
@@ -539,15 +558,17 @@ var bridge = {
  // Pull private/public key bytes from the binary channel
  // rather than base64-decoding from a JSON payload.
  // The bytes never appear in any JS string pool.
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
  }
  var wallet = await QuantumSwapSDK.Wallet.fromKeys(privBytes, pubBytes);
- stageWalletKeysBinary(requestId, wallet);
- sendResult(requestId, extractWalletInfo(wallet));
+ sendResult(requestId, Object.assign(extractWalletInfo(wallet),
+   stageWalletKeysBinary(requestId, wallet)));
  } catch (e) {
  sendError(requestId, e);
  } finally {
@@ -610,8 +631,10 @@ var bridge = {
  var _t1 = _now();
  var provider = new QuantumSwapSDK.JsonRpcProvider(
  payload.rpcEndpoint, payload.chainId);
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -677,8 +700,10 @@ var bridge = {
  var _t1 = _now();
  var provider = new QuantumSwapSDK.JsonRpcProvider(
  payload.rpcEndpoint, payload.chainId);
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -730,8 +755,10 @@ var bridge = {
  var _t1 = _now();
  var provider = new QuantumSwapSDK.JsonRpcProvider(
  payload.rpcEndpoint, payload.chainId);
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -801,8 +828,10 @@ var bridge = {
  var _t1 = _now();
  var provider = new QuantumSwapSDK.JsonRpcProvider(
  payload.rpcEndpoint, payload.chainId);
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -981,8 +1010,10 @@ var bridge = {
  return;
  }
  if (input.fromBinaryKeys === true) {
- privBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'privKey') : null);
- pubBytes = (typeof pullPayloadBinary === 'function' ? pullPayloadBinary(requestId, 'pubKey') : null);
+ privBytes = null;
+ pubBytes = null;
+ try { if (typeof pullPayloadBinary === 'function') privBytes = pullPayloadBinary(requestId, 'privKey'); } catch (_) {}
+ try { if (typeof pullPayloadBinary === 'function') pubBytes = pullPayloadBinary(requestId, 'pubKey'); } catch (_) {}
  if ((!privBytes || !pubBytes) && payload && payload.privKey && payload.pubKey && typeof base64ToBytes === 'function') {
  privBytes = base64ToBytes(String(payload.privKey));
  pubBytes = base64ToBytes(String(payload.pubKey));
@@ -1035,12 +1066,12 @@ var bridge = {
  // so a Swift-side String is the natural type for them. The
  // 30 s pasteboard expiry and view-disappear cleanup bound
  // their residency, see Pasteboard.swift / RevealWalletViewController.swift.
- stageWalletKeysBinary(requestId, wallet);
- sendResult(requestId, {
+ var extraKeys = stageWalletKeysBinary(requestId, wallet);
+ sendResult(requestId, Object.assign({
  address: wallet.address,
  seed: seedHex || null,
  seedWords: seedWords
- });
+ }, extraKeys));
  } catch (e) {
  sendError(requestId, e);
  } finally {
@@ -1170,8 +1201,13 @@ var BUILTIN_SWAP_RELEASE = {
 // Recognized hop-candidate token addresses (desktop swap-routing.ts
 // RECOGNIZED_TOKEN_CONTRACT_ADDRESSES: Heisen, Y2Q).
 var RECOGNIZED_TOKEN_CONTRACT_ADDRESSES = [
-    '0xe8ea8beb86e714ef2bde0afac17d6e45d1c35e48f312d6dc12c4fdb90d9e8a3d',
-    '0xa8036870874fbed790ed4d3bbd41b2f390b9858ff021f2993e90c6d1cbb167c7'
+    '0xe8ea8beb86e714ef2bde0afac17d6e45d1c35e48f312d6dc12c4fdb90d9e8a3d', // Heisen (HSN)
+    '0xa8036870874fbed790ed4d3bbd41b2f390b9858ff021f2993e90c6d1cbb167c7', // Year2Quantum (Y2Q)
+    '0x4015b40b181f2415003f24118b215ce04f276509176eccb10e0c4a9ccbd458d2', // Lion (Lio)
+    '0x6ff70c260458c9f448ec7aab008f1611456d58edb12e7795bf88735e1986a6ad', // Tiger (tig)
+    '0x592a8abb1de07bc3797bc3c592fc74c099c5a311ba856fc66fb6d4cfc18c728d', // Cat (cat)
+    '0x05fe2265b69d0c70a24075180242736c7389876b8917f38400e6540519e663df', // panther (pant)
+    '0x45bd01be5ef8509d9da183689ea7faf647331c54c7c9801de54c9ede9ac44d92'  // Wrapped Q (WQ, Beta2)
 ];
 
 var SWAP_MAX_INTERMEDIATE_HOPS = 3;
@@ -1540,6 +1576,14 @@ function dexZeroKeys(keyRefs) {
         if (keyRefs.pub) { try { keyRefs.pub.fill(0); } catch (_) {} }
     }
 }
+
+// CreatedToken deploy support: ABI + bytecode copied VERBATIM from the
+// desktop electron/created-token.ts (compiled from CreatedToken.sol with
+// the QuantumCoin solc 0.7.6 toolchain). Constructor
+// (name_, symbol_, decimals_, totalSupply_) mints the supply to the
+// creator. Keep in sync with the desktop copy; never edit by hand.
+var CREATED_TOKEN_ABI_JSON = "[{\"inputs\":[{\"internalType\":\"string\",\"name\":\"name_\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"symbol_\",\"type\":\"string\"},{\"internalType\":\"uint8\",\"name\":\"decimals_\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"totalSupply_\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Approval\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"}],\"name\":\"allowance\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"approve\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"balanceOf\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"mint\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"name\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"symbol\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalSupply\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transfer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transferFrom\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]";
+var CREATED_TOKEN_BYTECODE = "0x" + "60806040523480156200001157600080fd5b5060405162000c5a38038062000c5a833981810160405260808110156200003757600080fd5b81019080805160405193929190846401000000008211156200005857600080fd5b9083019060208201858111156200006e57600080fd5b82516401000000008111828201881017156200008957600080fd5b82525081516020918201929091019080838360005b83811015620000b85781810151838201526020016200009e565b50505050905090810190601f168015620000e65780820380516001836020036101000a031916815260200191505b50604052602001805160405193929190846401000000008211156200010a57600080fd5b9083019060208201858111156200012057600080fd5b82516401000000008111828201881017156200013b57600080fd5b82525081516020918201929091019080838360005b838110156200016a57818101518382015260200162000150565b50505050905090810190601f168015620001985780820380516001836020036101000a031916815260200191505b50604090815260208201519101519092509050600160ff831610801590620001c4575060128260ff1611155b62000216576040805162461bcd60e51b815260206004820152601560248201527f646563696d616c73206f7574206f662072616e67650000000000000000000000604482015290519081900360640190fd5b600081116200026c576040805162461bcd60e51b815260206004820152601860248201527f746f74616c20737570706c79206d757374206265203e20300000000000000000604482015290519081900360640190fd5b8351620002819060009060208701906200032f565b508251620002979060019060208601906200032f565b506002805460ff191660ff841617905560038190553360048190556000818152600560209081526040808320859055805185815290517fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929181900390910190a360405133906000907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0908290a350505050620003db565b828054600181600116156101000203166002900490600052602060002090601f016020900481019282620003675760008555620003b2565b82601f106200038257805160ff1916838001178555620003b2565b82800160010185558215620003b2579182015b82811115620003b257825182559160200191906001019062000395565b50620003c0929150620003c4565b5090565b5b80821115620003c05760008155600101620003c5565b61086f80620003eb6000396000f3fe608060405234801561001057600080fd5b50600436106100b45760003560e01c806370a082311161007157806370a08231146101f35780638da5cb5b1461021057806395d89b4114610218578063a9059cbb14610220578063dd62ed3e14610243578063f2fde38b14610266576100b4565b806306fdde03146100b9578063095ea7b31461013657806318160ddd1461016d57806323b872dd14610187578063313ce567146101b057806340c10f19146101ce575b600080fd5b6100c1610283565b6040805160208082528351818301528351919283929083019185019080838360005b838110156100fb5781810151838201526020016100e3565b50505050905090810190601f1680156101285780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b6101596004803603604081101561014c57600080fd5b5080359060200135610319565b604080519115158252519081900360200190f35b610175610374565b60408051918252519081900360200190f35b6101596004803603606081101561019d57600080fd5b508035906020810135906040013561037a565b6101b861040f565b6040805160ff9092168252519081900360200190f35b6101f1600480360360408110156101e457600080fd5b5080359060200135610418565b005b6101756004803603602081101561020957600080fd5b50356104e2565b6101756104f4565b6100c16104fa565b6101596004803603604081101561023657600080fd5b508035906020013561055a565b6101756004803603604081101561025957600080fd5b5080359060200135610570565b6101f16004803603602081101561027c57600080fd5b503561058d565b60008054604080516020601f600260001961010060018816150201909516949094049384018190048102820181019092528281526060939092909183018282801561030f5780601f106102e45761010080835404028352916020019161030f565b820191906000526020600020905b8154815290600101906020018083116102f257829003601f168201915b5050505050905090565b3360008181526006602090815260408083208684528252808320859055805185815290519293869390927f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925928290030190a350600192915050565b60035490565b600083815260066020908152604080832033845290915281205460001981146103f95760408051808201909152601d81527f45524332303a20696e73756666696369656e7420616c6c6f77616e636500000060208201526103de9082908590610653565b60008681526006602090815260408083203384529091529020555b6104048585856106ea565b506001949350505050565b60025460ff1690565b336004541461046e576040805162461bcd60e51b815260206004820181905260248201527f4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e6572604482015290519081900360640190fd5b60035461047b90826107b2565b60035560008281526005602052604090205461049790826107b2565b6000838152600560209081526040808320939093558251848152925185937fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef92908290030190a35050565b60009081526005602052604090205490565b60045481565b60018054604080516020601f6002600019610100878916150201909516949094049384018190048102820181019092528281526060939092909183018282801561030f5780601f106102e45761010080835404028352916020019161030f565b60006105673384846106ea565b50600192915050565b600091825260066020908152604080842092845291905290205490565b33600454146105e3576040805162461bcd60e51b815260206004820181905260248201527f4f776e61626c653a2063616c6c6572206973206e6f7420746865206f776e6572604482015290519081900360640190fd5b8061061f5760405162461bcd60e51b81526004018080602001828103825260268152602001806108146026913960400191505060405180910390fd5b6004546040518291907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e090600090a3600455565b600081848411156106e25760405162461bcd60e51b81526004018080602001828103825283818151815260200191508051906020019080838360005b838110156106a757818101518382015260200161068f565b50505050905090810190601f1680156106d45780820380516001836020036101000a031916815260200191505b509250505060405180910390fd5b505050900390565b604080518082018252601b81527f45524332303a20696e73756666696369656e742062616c616e6365000000000060208083019190915260008681526005909152919091205461073b918390610653565b60008481526005602052604080822092909255838152205461075d90826107b2565b600560008481526020019081526020016000208190555081837fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef836040518082815260200191505060405180910390a3505050565b60008282018381101561080c576040805162461bcd60e51b815260206004820152601b60248201527f536166654d6174683a206164646974696f6e206f766572666c6f770000000000604482015290519081900360640190fd5b939250505056fe4f776e61626c653a206e6577206f776e657220697320746865207a65726f2061646472657373a2646970667358221220ef070822d95ca2d2c9bddea5359d1f05d3254f0ca3b896bb2cf4b41c965107fa64736f6c63430007060033";
 
 Object.assign(bridge, {
     // Token metadata + optional balance for the token pickers
@@ -2006,6 +2050,66 @@ Object.assign(bridge, {
             var tx = await factory.createPair(tokenAAddress, tokenBAddress,
                 dexSigningOverrides(wallet, payload, { gasLimit: gasLimit }));
             sendResult(requestId, { txHash: tx.hash });
+        } catch (e) {
+            sendError(requestId, dexSanitizeError(e));
+        } finally {
+            dexZeroKeys(keyRefs);
+        }
+    },
+
+    // Desktop electron/ipc/gas.ts txKind "deployToken": estimate the
+    // CreatedToken deploy gas; the Android caller falls back to the
+    // desktop default 6,000,000 when this reverts.
+    tokensEstimateDeployGas: async function(requestId) {
+        var payload = null;
+        try {
+            if (!requireSDK(requestId)) return;
+            payload = pullPayload(requestId);
+            if (!payload) return;
+            var provider = await dexInit(payload);
+            var factory = new QuantumSwapSDK.ContractFactory(
+                JSON.parse(CREATED_TOKEN_ABI_JSON), CREATED_TOKEN_BYTECODE);
+            var supplyBase = QuantumSwapSDK.parseUnits(
+                String(payload.totalSupply), Number(payload.decimals));
+            var deployTx = await factory.getDeployTransaction(
+                String(payload.name), String(payload.symbol),
+                Number(payload.decimals), supplyBase);
+            deployTx.from = QuantumSwapSDK.getAddress(String(payload.fromAddress));
+            var gas = await provider.estimateGas(deployTx);
+            sendResult(requestId, { gasLimit: gas.toString() });
+        } catch (e) {
+            sendError(requestId, dexSanitizeError(e));
+        }
+    },
+
+    // Desktop electron/ipc/liquidity.ts TokenSubmitCreate: deploy the
+    // CreatedToken contract. Returns the tx hash plus the predicted
+    // contract address (getCreateAddress over the pending nonce).
+    tokensSubmitCreate: async function(requestId) {
+        var payload = null;
+        var keyRefs = { priv: null, pub: null };
+        try {
+            if (!requireSDK(requestId)) return;
+            payload = pullPayload(requestId);
+            if (!payload) return;
+            var provider = await dexInit(payload);
+            var wallet = await dexWalletFromBinaryKeys(requestId, provider, keyRefs, payload);
+            var supplyBase = QuantumSwapSDK.parseUnits(
+                String(payload.totalSupply), Number(payload.decimals));
+            var factory = new QuantumSwapSDK.ContractFactory(
+                JSON.parse(CREATED_TOKEN_ABI_JSON), CREATED_TOKEN_BYTECODE, wallet);
+            var deployTx = await factory.getDeployTransaction(
+                String(payload.name), String(payload.symbol),
+                Number(payload.decimals), supplyBase);
+            var from = wallet.address;
+            var nonce;
+            try { nonce = await provider.getTransactionCount(from, 'pending'); }
+            catch (_) { nonce = await provider.getTransactionCount(from, 'latest'); }
+            var contractAddress = QuantumSwapSDK.getCreateAddress({ from: from, nonce: nonce });
+            var gasLimit = Number(payload.gasLimit) || 6000000;
+            var tx = await wallet.sendTransaction(Object.assign({}, deployTx,
+                dexSigningOverrides(wallet, payload, { nonce: nonce, gasLimit: gasLimit })));
+            sendResult(requestId, { txHash: tx.hash, contractAddress: contractAddress });
         } catch (e) {
             sendError(requestId, dexSanitizeError(e));
         } finally {

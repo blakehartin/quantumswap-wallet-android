@@ -1,13 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-parity card surface (theme-quantum.css .roundex-box):
+     the card-gradient vertical sweep #1F1D35 -> #10121F -> #0B0E18,
+     1dp #8F8AAA border, 22dp radius. Shared by the home center card,
+     the tokens table card, and the transactions table card - the same
+     trio that shares .roundex-box styling on desktop. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:left="0dp"
         android:right="0dp"
         android:top="0dp"
         android:bottom="0dp">
         <shape android:shape="rectangle">
-            <solid android:color="@color/colorCommon7"/>
-            <corners android:radius="15dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#FF1F1D35"
+                android:centerColor="#FF10121F"
+                android:endColor="#FF0B0E18" />
+            <stroke android:width="1dp" android:color="#FF8F8AAA" />
+            <corners android:radius="22dp" />
         </shape>
     </item>
 </layer-list>
-

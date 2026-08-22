@@ -910,7 +910,7 @@ the seeded vector suite pins it byte-for-byte.
 
 The Android wallet's runtime cryptography ships entirely in **a
 single bundled JavaScript file** (`quantumswap-bundle.js`,
-≈12.3 MiB, MIT-licensed) loaded into a `WebView`. The Java
+≈3.2 MiB, MIT-licensed) loaded into a `WebView`. The Java
 dependencies are limited to standard AndroidX, Material
 Components, OkHttp/Gson for the read-only scan API, ML Kit +
 CameraX for QR scanning, and ZXing for QR generation.
@@ -923,12 +923,22 @@ consumes:
 | `QuantumSwapSDK` | Wallet construction, address helpers, JSON-RPC provider, IERC20 contract helper, scrypt KDF, AEAD wallet envelopes | [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) (~36 callsites) |
 | `SeedWordsSDK` | BIP39-style seed-word lookup tables | [`app/src/main/assets/bridge.html`](app/src/main/assets/bridge.html) (4 callsites — `getWordListFromSeedArray`, `getAllSeedWords`, `doesSeedWordExist`) |
 
-Both globals are produced upstream from two distinct SDK packages:
+Both globals are produced from the published npm SDK packages
+(same versions as the desktop wallet):
 
-| Upstream SDK | Repository | Role in the bundle |
+| npm package | Version | Role in the bundle |
 | --- | --- | --- |
-| `quantumcoin.js` | <https://github.com/quantumcoinproject/quantumcoin.js> | The ethers.js-compatible wrapper that exposes the high-level `Wallet` / `JsonRpcProvider` / `IERC20` surface this wallet calls (`wallet.sendTransaction`, `token.transfer`, `wallet.getSigningContext`, `wallet.populateTransaction`). |
-| `quantum-coin-js-sdk` | <https://github.com/quantumcoinproject/quantum-coin-js-sdk> | The lower-level Quantum Coin JS SDK (npm: `quantum-coin-js-sdk`) that `quantumcoin.js` builds on. Provides the chain-specific primitives (post-quantum signing, encrypted-wallet JSON envelope, scrypt KDF). |
+| `quantumcoin` | `^8.0.3` | The ethers.js-compatible wrapper that exposes the high-level `Wallet` / `JsonRpcProvider` / `IERC20` surface this wallet calls (`wallet.sendTransaction`, `token.transfer`, `wallet.getSigningContext`, `wallet.populateTransaction`). |
+| `quantumswap` | `^1.0.3` | The DEX surface (`QuantumSwapV2Factory` / `QuantumSwapV2Router` contract helpers) used by the Swap / Liquidity / Pools bridge handlers. |
+| `seed-words` | `^1.1.1` | BIP39-style seed-word lookup tables, exposed as the separate `SeedWordsSDK` global. |
+| `quantum-coin-js-sdk` | `2.1.1` (transitive, pinned exactly by `quantumcoin`) | The lower-level Quantum Coin JS SDK providing chain-specific primitives (post-quantum signing, encrypted-wallet JSON envelope, scrypt KDF) via self-contained WASM + WebCrypto. |
+
+Since `quantumcoin` 8.x / `quantumswap` 1.x, cryptography is
+supported natively by the SDKs (WebCrypto randomness/hashing plus
+WASM shipped inside `quantum-coin-js-sdk`), so the bundle carries
+**no polyfills or crypto shims** — the webpack config's only
+override is an empty-module stub for the SDK's optional `node:net`
+IPC provider.
 
 The Android wallet only ever consumes the **curated
 `quantumswap-bundle.js`** — **no Java code reaches into either
@@ -939,7 +949,7 @@ stay meaningful.
 
 The bundle is built locally from
 [`webview-sdk-bundle/`](webview-sdk-bundle/) via webpack
-(`npm install && npx webpack`), and the resulting
+(`npm ci && npm run build`), and the resulting
 `app/src/main/assets/quantumswap-bundle.js` is byte-identical to
 the one shipped by the iOS wallet at
 `QuantumSwapWallet/Resources/quantumswap-bundle.js`.
@@ -1065,8 +1075,7 @@ contract documented in
         │   ├── AndroidManifest.xml
         │   ├── assets/
         │   │   ├── bridge.html                       JS bridge (the only HTML the WebView loads)
-        │   │   ├── quantumswap-bundle.js             The single JS SDK bundle (SHA-256 pinned)
-        │   │   └── quantumswap-bundle.js.LICENSE.txt
+        │   │   └── quantumswap-bundle.js             The single JS SDK bundle (SHA-256 pinned)
         │   ├── res/
         │   │   ├── drawable/, drawable-v24/, font/, layout/, menu/
         │   │   ├── mipmap-*/                         Launcher icons
@@ -1107,12 +1116,12 @@ contract documented in
         │       │   ├── fragment/                     13 top-level Fragments
         │       │   └── widget/                       Custom views
         │       └── viewmodel/                        Per-screen ViewModels
-        └── test/java/com/quantumswap/app/      29 test classes, 183 tests
+        └── test/java/com/quantumswap/app/      30 test classes, 193 tests
 ```
 
-Counts (at the time of writing): 113 Java source files in
-`app/src/main`, 29 test classes (183 unit tests), 833-line
-`bridge.html`, 12 MiB `quantumswap-bundle.js`, 230+ localization
+Counts (at the time of writing): 122 Java source files in
+`app/src/main`, 30 test classes (193 unit tests), 1928-line
+`bridge.html`, 3.2 MiB `quantumswap-bundle.js`, 230+ localization
 keys.
 
 ---
@@ -1141,11 +1150,11 @@ need a system-wide Gradle install.
 
 ```bash
 git clone https://github.com/quantumcoinproject/quantumswap-wallet-android.git
-cd quantum-coin-wallet-android
+cd quantumswap-wallet-android
 
 # Optional but recommended: rebuild the JS bundle from source so
 # its SHA-256 matches what you see in webview-sdk-bundle/.
-( cd webview-sdk-bundle && npm install && npx webpack )
+( cd webview-sdk-bundle && npm ci && npm run build )
 
 # Debug build (assemble the APK; embedBundleHash runs as preBuild
 # and regenerates GeneratedBundleHash.java automatically).
@@ -1195,14 +1204,16 @@ self-identifying when downloaded off a release.
 
 `quantumswap-bundle.js` is built from the
 [`webview-sdk-bundle/`](webview-sdk-bundle/) module via webpack
-with the upstream `quantumcoin.js` and `quantum-coin-js-sdk`
-packages. After rebuilding:
+from the npm `quantumcoin`, `quantumswap`, and `seed-words`
+packages (crypto is native to the SDKs — no polyfills). After
+bumping versions or rebuilding:
 
 ```bash
 cd webview-sdk-bundle
-npm install
-npx webpack
-# webpack writes ../app/src/main/assets/quantumswap-bundle.js
+npm ci
+npm run build
+# webpack --mode production writes ../app/src/main/assets/quantumswap-bundle.js
+node bridge-smoke-test.js   # sanity-check the bundle + bridge.html contract
 cd ..
 ./gradlew :app:assembleDebug
 ```
@@ -1334,9 +1345,9 @@ configuration stays resolvable in IDE syncs).
 
 [MIT](LICENSE) — see the file for details.
 
-The bundled `quantumswap-bundle.js` and its embedded third-party
-libraries are MIT-licensed (see
-[`app/src/main/assets/quantumswap-bundle.js.LICENSE.txt`](app/src/main/assets/quantumswap-bundle.js.LICENSE.txt)).
+The bundled `quantumswap-bundle.js` and the npm packages embedded
+in it (`quantumcoin`, `quantumswap`, `seed-words`,
+`quantum-coin-js-sdk`) are MIT-licensed.
 
 ---
 

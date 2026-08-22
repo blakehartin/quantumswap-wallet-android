@@ -1,0 +1,44 @@
+<!-- QuantumSwap brand mark on a TRANSPARENT background: the silver ring
+     plus its two satellite dots, traced from drawable-v24/logo.png but
+     without that PNG's baked-in near-black square. Used by the home
+     header so the mark sits directly on the banner gradient, matching
+     the desktop app's brand row (styles.css .logoimg + theme-quantum.css).
+     The PNG stays for surfaces that want the dark tile (notification
+     large icon). -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Ring: outer circle minus inner circle via even-odd fill, with the
+         PNG's white -> silver diagonal sweep. -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M24,5.5 a18.5,18.5 0 1,0 0,37 a18.5,18.5 0 1,0 0,-37 Z M24,11.5 a12.5,12.5 0 1,1 0,25 a12.5,12.5 0 1,1 0,-25 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="10"
+                android:startY="6"
+                android:endX="38"
+                android:endY="42">
+                <item android:color="#FFFFFFFF" android:offset="0" />
+                <item android:color="#FFF2F3F5" android:offset="0.45" />
+                <item android:color="#FFA8ADB8" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Small satellite dot, top-left. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.5,3.6 a2.9,2.9 0 1,0 0,5.8 a2.9,2.9 0 1,0 0,-5.8 Z" />
+
+    <!-- Large satellite dot overlapping the ring, bottom-right. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M36,29.9 a4.8,4.8 0 1,0 0,9.6 a4.8,4.8 0 1,0 0,-9.6 Z" />
+</vector>

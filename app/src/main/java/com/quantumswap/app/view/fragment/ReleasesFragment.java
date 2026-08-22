@@ -104,9 +104,14 @@ public class ReleasesFragment extends Fragment {
             listGroup.addView(rb);
 
             TextView detail = new TextView(getContext());
-            detail.setText("WQ " + shortAddr(release.wq)
-                    + "\nFactory " + shortAddr(release.factory)
-                    + "\nRouter " + shortAddr(release.router));
+            // Full addresses (not the short 0x1234...abcd form): the
+            // release contracts are exactly what the user must be able
+            // to verify byte-for-byte against a published release.
+            detail.setText("WQ " + safeAddr(release.wq)
+                    + "\nFactory " + safeAddr(release.factory)
+                    + "\nRouter " + safeAddr(release.router));
+            detail.setTextIsSelectable(true);
+            detail.setTypeface(android.graphics.Typeface.MONOSPACE);
             detail.setTextSize(11);
             detail.setTextColor(getResources().getColor(R.color.colorCommon3));
             detail.setPadding(dp(32), 0, 0, dp(10));
@@ -188,10 +193,8 @@ public class ReleasesFragment extends Fragment {
         return e.getText() == null ? "" : e.getText().toString().trim();
     }
 
-    private static String shortAddr(String addr) {
-        if (addr == null) return "";
-        return addr.length() > 14
-                ? addr.substring(0, 8) + "..." + addr.substring(addr.length() - 4) : addr;
+    private static String safeAddr(String addr) {
+        return addr == null ? "" : addr;
     }
 
     private static String sanitizeError(String s) {

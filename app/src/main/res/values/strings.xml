@@ -156,6 +156,7 @@
     <!--- Menu -->
     <string name="nav_wallets_title">Wallets</string>
     <string name="nav_settings_title">Settings</string>
+    <string name="nav_advanced_title">Advanced</string>
 
     <string name="nav_send_title">Send</string>
     <string name="nav_receive_title">Receive</string>

@@ -11,7 +11,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -23,6 +22,7 @@ import com.quantumswap.app.utils.DexPayloads;
 import com.quantumswap.app.utils.GlobalMethods;
 import com.quantumswap.app.utils.ReleaseStore;
 import com.quantumswap.app.view.dialog.DexUnlockPrompt;
+import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.view.widget.TokenPickerController;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
@@ -49,19 +49,30 @@ public class SwapFragment extends Fragment {
     private JsonViewModel jsonViewModel;
     private String walletAddress;
 
+    private static final long QUOTE_DEBOUNCE_MS = 400;
+
     private TokenPickerController fromPicker;
     private TokenPickerController toPicker;
     private EditText amountInEditText;
+    private EditText amountOutEditText;
     private EditText slippageEditText;
-    private TextView amountOutTextView;
     private TextView routeTextView;
     private TextView statusTextView;
-    private Button quoteButton;
-    private Button swapButton;
+    private TextView fromBalanceTextView;
+    private TextView toBalanceTextView;
+    private View fromBoxView;
+    private View toBoxView;
+    private View flipRowView;
+    private Button nextButton;
     private ProgressBar progress;
 
     private String lastQuotedAmountOut;
     private boolean flowInFlight;
+    // Guards the bidirectional quote wiring (desktop swapQuantityUpdating):
+    // programmatic writes to one amount field must not re-trigger the
+    // opposite quote.
+    private boolean syncingAmounts;
+    private Runnable pendingQuote;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public static SwapFragment newInstance() {
@@ -87,25 +98,36 @@ public class SwapFragment extends Fragment {
         TextView releaseBanner = view.findViewById(R.id.textView_swap_release_banner);
         TextView fromLabel = view.findViewById(R.id.textView_swap_from_label);
         TextView toLabel = view.findViewById(R.id.textView_swap_to_label);
-        TextView amountOutLabel = view.findViewById(R.id.textView_swap_amount_out_label);
         TextView slippageLabel = view.findViewById(R.id.textView_swap_slippage_label);
+        TextView fromBalanceLabel = view.findViewById(R.id.textView_swap_from_balance_label);
+        TextView toBalanceLabel = view.findViewById(R.id.textView_swap_to_balance_label);
+        fromBalanceTextView = view.findViewById(R.id.textView_swap_from_balance);
+        toBalanceTextView = view.findViewById(R.id.textView_swap_to_balance);
+        fromBoxView = view.findViewById(R.id.linearLayout_swap_from_box);
+        toBoxView = view.findViewById(R.id.linearLayout_swap_to_box);
+        flipRowView = view.findViewById(R.id.linearLayout_swap_flip);
+        ImageButton flipButton = view.findViewById(R.id.imageButton_swap_flip);
         amountInEditText = view.findViewById(R.id.editText_swap_amount_in);
+        amountOutEditText = view.findViewById(R.id.editText_swap_amount_out);
         slippageEditText = view.findViewById(R.id.editText_swap_slippage);
-        amountOutTextView = view.findViewById(R.id.textView_swap_amount_out);
         routeTextView = view.findViewById(R.id.textView_swap_route);
         statusTextView = view.findViewById(R.id.textView_swap_status);
-        quoteButton = view.findViewById(R.id.button_swap_quote);
-        swapButton = view.findViewById(R.id.button_swap_execute);
+        nextButton = view.findViewById(R.id.button_swap_next);
         progress = view.findViewById(R.id.progress_swap);
 
         title.setText(jsonViewModel.lang("swap", "Swap"));
         fromLabel.setText(jsonViewModel.lang("swap-from-token", "From token"));
         toLabel.setText(jsonViewModel.lang("swap-to-token", "To token"));
-        amountOutLabel.setText(jsonViewModel.lang("swap-to-quantity", "To quantity"));
         slippageLabel.setText(jsonViewModel.lang("slippage", "Slippage"));
-        amountInEditText.setHint(jsonViewModel.lang("swap-from-quantity", "From quantity"));
-        quoteButton.setText(jsonViewModel.lang("get-quote", "Get Quote"));
-        swapButton.setText(jsonViewModel.lang("swap", "Swap"));
+        String balanceLabel = jsonViewModel.lang("balance", "Balance") + ":";
+        fromBalanceLabel.setText(balanceLabel);
+        toBalanceLabel.setText(balanceLabel);
+        // Desktop: no labels over the amount fields, placeholders only.
+        amountInEditText.setHint(jsonViewModel.lang(
+                "swap-from-token-quantity", "From token quantity"));
+        amountOutEditText.setHint(jsonViewModel.lang(
+                "swap-to-token-quantity", "To token quantity"));
+        nextButton.setText(jsonViewModel.lang("next", "Next"));
 
         // Custom-release banner (desktop custom-release-banner-prefix):
         // a visible reminder that swaps run against user-supplied
@@ -118,48 +140,155 @@ public class SwapFragment extends Fragment {
         }
 
         String customLabel = jsonViewModel.lang("custom-contract-address", "Custom...");
+        // Desktop flow: neither side is preselected - both triggers
+        // read "Select token" until the user picks. "To" lists the full
+        // recognized allow-list even when the account holds none of a
+        // token (you swap TO tokens you do not own yet).
         fromPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_swap_from),
+                (Button) view.findViewById(R.id.spinner_swap_from),
                 (EditText) view.findViewById(R.id.editText_swap_from_custom),
-                walletAddress, customLabel);
+                walletAddress, customLabel, false, false);
         toPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_swap_to),
+                (Button) view.findViewById(R.id.spinner_swap_to),
                 (EditText) view.findViewById(R.id.editText_swap_to_custom),
-                walletAddress, customLabel);
-        Runnable clearQuote = () -> {
-            lastQuotedAmountOut = null;
-            amountOutTextView.setText("-");
-            routeTextView.setVisibility(View.GONE);
-        };
-        fromPicker.setOnChanged(clearQuote);
-        toPicker.setOnChanged(clearQuote);
+                walletAddress, customLabel, true, false);
+        fromPicker.setOnChanged(this::onTokensChanged);
+        toPicker.setOnChanged(this::onTokensChanged);
 
+        // Desktop: tapping a balance value fills that side's quantity.
+        fromBalanceTextView.setOnClickListener(v -> {
+            setAmountSilently(amountInEditText, fromBalanceTextView.getText().toString());
+            scheduleQuote(true);
+        });
+        toBalanceTextView.setOnClickListener(v -> {
+            setAmountSilently(amountOutEditText, toBalanceTextView.getText().toString());
+            scheduleQuote(false);
+        });
+
+        // Bidirectional debounced quoting (desktop 400ms debounce).
+        amountInEditText.addTextChangedListener(quoteWatcher(true));
+        amountOutEditText.addTextChangedListener(quoteWatcher(false));
+
+        flipButton.setOnClickListener(v -> flipTokens());
         backArrow.setOnClickListener(v -> mListener.onSwapCompleteByBackArrow());
-        quoteButton.setOnClickListener(v -> requestQuote());
-        swapButton.setOnClickListener(v -> startSwap());
+        nextButton.setOnClickListener(v -> onNextClick());
 
         // Desktop parity: the Swap surface is still in early-phase
-        // testing; warn once per screen open.
-        new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("swap", "Swap"))
-                .setMessage(jsonViewModel.lang("swapEarlyPhaseWarn",
-                        "This is a feature still in early phases of testing. Do you want to continue?"))
-                .setPositiveButton(jsonViewModel.getOkByLangValues(), (d, w) -> d.dismiss())
-                .setNegativeButton(jsonViewModel.getCancelByLangValues(),
-                        (d, w) -> mListener.onSwapCompleteByBackArrow())
+        // testing; warn once per screen open. Uses the shared Yes/No
+        // card dialog (desktop modalYesNoDialog: red-glass No +
+        // teal-glass Yes), not the platform OK/Cancel text buttons.
+        View warnView = LayoutInflater.from(getContext())
+                .inflate(R.layout.yes_no_dialog, null);
+        ((TextView) warnView.findViewById(R.id.textView_yes_no_message))
+                .setText(jsonViewModel.lang("swapEarlyPhaseWarn",
+                        "This is a feature still in early phases of testing. Do you want to continue?"));
+        Button yesButton = warnView.findViewById(R.id.button_yes_no_yes);
+        Button noButton = warnView.findViewById(R.id.button_yes_no_no);
+        yesButton.setText(jsonViewModel.lang("yes", "Yes"));
+        noButton.setText(jsonViewModel.lang("no", "No"));
+        final AlertDialog warnDialog = new AlertDialog.Builder(getContext())
+                .setView(warnView)
                 .setCancelable(false)
-                .show();
+                .create();
+        if (warnDialog.getWindow() != null) {
+            warnDialog.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(
+                            android.graphics.Color.TRANSPARENT));
+        }
+        yesButton.setOnClickListener(v -> warnDialog.dismiss());
+        noButton.setOnClickListener(v -> {
+            warnDialog.dismiss();
+            mListener.onSwapCompleteByBackArrow();
+        });
+        warnDialog.show();
     }
 
     // ---------------------------------------------------------------
-    // Quote
+    // Desktop-parity form flow: token change -> route check; amount
+    // typing -> debounced bidirectional quote; Next -> validate + swap.
     // ---------------------------------------------------------------
 
-    private void requestQuote() {
-        String amountIn = text(amountInEditText);
-        if (!validateInputs(amountIn)) return;
+    /** Desktop updateSwapScreenInfo(): clear amounts/route, refresh
+     *  balances, gate the quantity boxes + flip on both sides being
+     *  selected, then route-check when they are. */
+    private void onTokensChanged() {
+        lastQuotedAmountOut = null;
+        setAmountSilently(amountInEditText, "");
+        setAmountSilently(amountOutEditText, "");
+        routeTextView.setVisibility(View.GONE);
+        updateBalances();
+        String from = fromPicker.getTokenValue();
+        String to = toPicker.getTokenValue();
+        boolean ready = !from.isEmpty() && !to.isEmpty();
+        fromBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
+        toBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
+        flipRowView.setVisibility(ready ? View.VISIBLE : View.GONE);
+        if (!ready || from.equalsIgnoreCase(to)) return;
         setBusy(true);
-        resolveMeta(fromPicker, () -> resolveMeta(toPicker, this::doQuote));
+        resolveMeta(fromPicker, () -> resolveMeta(toPicker, () -> fetchRoute(true)));
+    }
+
+    private void updateBalances() {
+        fromBalanceTextView.setText(TokenPickerController
+                .balanceForValue(walletAddress, fromPicker.getTokenValue()));
+        toBalanceTextView.setText(TokenPickerController
+                .balanceForValue(walletAddress, toPicker.getTokenValue()));
+    }
+
+    /** Desktop flipSwapTokens(): exchange the two sides' selections,
+     *  carry the old To amount into From, and re-quote. */
+    private void flipTokens() {
+        String previousToAmount = text(amountOutEditText);
+        Object fromSel = fromPicker.captureSelection();
+        Object toSel = toPicker.captureSelection();
+        fromPicker.restoreSelection(toSel);
+        toPicker.restoreSelection(fromSel);
+        onTokensChanged();
+        if (!previousToAmount.isEmpty()) {
+            setAmountSilently(amountInEditText, previousToAmount);
+            scheduleQuote(true);
+        }
+    }
+
+    private android.text.TextWatcher quoteWatcher(final boolean fromSide) {
+        return new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) {
+                if (syncingAmounts) return;
+                scheduleQuote(fromSide);
+            }
+        };
+    }
+
+    private void setAmountSilently(EditText field, String value) {
+        syncingAmounts = true;
+        try {
+            field.setText(value);
+        } finally {
+            syncingAmounts = false;
+        }
+    }
+
+    private void scheduleQuote(final boolean fromChanged) {
+        if (pendingQuote != null) mainHandler.removeCallbacks(pendingQuote);
+        pendingQuote = () -> runQuote(fromChanged);
+        mainHandler.postDelayed(pendingQuote, QUOTE_DEBOUNCE_MS);
+    }
+
+    private void runQuote(final boolean fromChanged) {
+        String from = fromPicker.getTokenValue();
+        String to = toPicker.getTokenValue();
+        if (from.isEmpty() || to.isEmpty() || from.equalsIgnoreCase(to)) return;
+        String amount = text(fromChanged ? amountInEditText : amountOutEditText);
+        if (amount.isEmpty() || !amount.matches("\\d*\\.?\\d+")
+                || Double.parseDouble(amount) <= 0) {
+            setAmountSilently(fromChanged ? amountOutEditText : amountInEditText, "");
+            lastQuotedAmountOut = null;
+            return;
+        }
+        setBusy(true);
+        resolveMeta(fromPicker, () -> resolveMeta(toPicker, () -> doQuote(fromChanged)));
     }
 
     /** Resolve decimals/symbol for a custom contract entry via the
@@ -187,27 +316,40 @@ public class SwapFragment extends Fragment {
         }
     }
 
-    private void doQuote() {
+    /** One quote leg: from-amount -> to-amount (swapGetAmountsOut) or
+     *  to-amount -> from-amount (swapGetAmountsIn), desktop
+     *  updateToQuantityFromFrom / updateFromQuantityFromTo. */
+    private void doQuote(final boolean fromChanged) {
         try {
-            final String amountIn = text(amountInEditText);
             JSONObject payload = DexPayloads.base();
             payload.put("fromTokenValue", fromPicker.getTokenValue());
             payload.put("toTokenValue", toPicker.getTokenValue());
             payload.put("fromDecimals", fromPicker.getDecimals());
             payload.put("toDecimals", toPicker.getDecimals());
-            payload.put("amountIn", amountIn);
-            KeyViewModel.getBridge().dexCallAsync("swapGetAmountsOut", payload,
-                    uiCallback(data -> {
-                        lastQuotedAmountOut = data.optString("amountOut", "");
-                        amountOutTextView.setText(lastQuotedAmountOut);
-                        fetchRoute();
-                    }));
+            if (fromChanged) {
+                payload.put("amountIn", text(amountInEditText));
+                KeyViewModel.getBridge().dexCallAsync("swapGetAmountsOut", payload,
+                        uiCallback(data -> {
+                            setBusy(false);
+                            lastQuotedAmountOut = data.optString("amountOut", "");
+                            setAmountSilently(amountOutEditText, lastQuotedAmountOut);
+                        }));
+            } else {
+                payload.put("amountOut", text(amountOutEditText));
+                KeyViewModel.getBridge().dexCallAsync("swapGetAmountsIn", payload,
+                        uiCallback(data -> {
+                            setBusy(false);
+                            lastQuotedAmountOut = text(amountOutEditText);
+                            setAmountSilently(amountInEditText,
+                                    data.optString("amountIn", ""));
+                        }));
+            }
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void fetchRoute() {
+    private void fetchRoute(final boolean alertWhenMissing) {
         try {
             JSONObject payload = DexPayloads.base();
             payload.put("fromTokenValue", fromPicker.getTokenValue());
@@ -219,6 +361,12 @@ public class SwapFragment extends Fragment {
                         JSONArray symbols = data.optJSONArray("pathSymbols");
                         if (!data.optBoolean("exists", false) || path == null) {
                             routeTextView.setVisibility(View.GONE);
+                            if (alertWhenMissing) {
+                                GlobalMethods.ShowErrorDialog(getContext(),
+                                        jsonViewModel.getErrorTitleByLangValues(),
+                                        jsonViewModel.lang("swap-no-pair",
+                                                "No swap route exists between these two tokens (max 3 hops)"));
+                            }
                             return;
                         }
                         StringBuilder sb = new StringBuilder(
@@ -242,51 +390,22 @@ public class SwapFragment extends Fragment {
     // Approve + swap
     // ---------------------------------------------------------------
 
-    private void startSwap() {
+    /** Desktop onSwapNextClick: post-click validation (button is never
+     *  disabled), then the allowance check decides the step plan and
+     *  the tx-steps dialog (desktop #modalTxSteps) drives
+     *  [Approve FROM] -> [Swap FROM -> TO]. */
+    private void onNextClick() {
         final String amountIn = text(amountInEditText);
         if (!validateInputs(amountIn)) return;
         if (lastQuotedAmountOut == null || lastQuotedAmountOut.isEmpty()) {
-            // Quote first so the user always confirms against a live
-            // number (mirrors the desktop flow where the quote drives
-            // the confirmation copy).
-            requestQuote();
-            return;
+            lastQuotedAmountOut = text(amountOutEditText);
         }
         if (flowInFlight) return;
-
-        String message = jsonViewModel.lang("swap-execute-confirm-message",
-                        "You are swapping [FROM_AMOUNT] [FROM_SYMBOL] for at least [TO_AMOUNT] [TO_SYMBOL].")
-                .replace("[FROM_AMOUNT]", amountIn)
-                .replace("[FROM_SYMBOL]", sanitizeSymbol(fromPicker.getSymbol()))
-                .replace("[TO_AMOUNT]", minOutForDisplay())
-                .replace("[TO_SYMBOL]", sanitizeSymbol(toPicker.getSymbol()));
-
-        new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("swap", "Swap"))
-                .setMessage(message)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(), (d, w) ->
-                        DexUnlockPrompt.show(getActivity(), jsonViewModel, this::runSwapFlow))
-                .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> d.dismiss())
-                .show();
-    }
-
-    /** Post-unlock: load keys off the main thread, then walk the
-     *  allowance -> (approve -> poll) -> swap chain. */
-    private void runSwapFlow(String password) {
-        flowInFlight = true;
         setBusy(true);
-        final Context appCtx = getActivity().getApplicationContext();
-        new Thread(() -> {
-            try {
-                final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                mainHandler.post(() -> checkAllowanceThen(keys));
-            } catch (Exception e) {
-                mainHandler.post(() -> failFlow(e.getMessage()));
-            }
-        }).start();
+        resolveMeta(fromPicker, () -> resolveMeta(toPicker, this::checkAllowanceThenSteps));
     }
 
-    private void checkAllowanceThen(final String[] keys) {
+    private void checkAllowanceThenSteps() {
         try {
             JSONObject payload = DexPayloads.base();
             payload.put("fromTokenValue", fromPicker.getTokenValue());
@@ -295,18 +414,75 @@ public class SwapFragment extends Fragment {
             payload.put("ownerAddress", walletAddress);
             KeyViewModel.getBridge().dexCallAsync("swapCheckAllowance", payload,
                     uiCallback(data -> {
-                        if (data.optBoolean("sufficient", false)) {
-                            estimateAndSubmitSwap(keys);
-                        } else {
-                            confirmApproval(keys);
-                        }
+                        setBusy(false);
+                        showStepsDialog(!data.optBoolean("sufficient", false));
                     }));
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void confirmApproval(final String[] keys) {
+    /** Desktop createSwapWorkflowStepPlan: optional "Approve FROM",
+     *  always "Swap FROM -> TO". */
+    private void showStepsDialog(boolean needsApproval) {
+        String fromSym = sanitizeSymbol(fromPicker.getSymbol());
+        String toSym = sanitizeSymbol(toPicker.getSymbol());
+        java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
+        if (needsApproval) {
+            steps.add(new TxStepsDialog.Step(
+                    jsonViewModel.lang("approve", "Approve") + " " + fromSym,
+                    this::runApproveStep));
+        }
+        steps.add(new TxStepsDialog.Step(
+                jsonViewModel.lang("swap", "Swap") + " " + fromSym + " -> " + toSym,
+                this::runSwapStep));
+        sessionKeys = null;
+        flowInFlight = true;
+        new TxStepsDialog(getContext(),
+                jsonViewModel.lang("swap", "Swap"),
+                jsonViewModel.lang("transaction-id", "Transaction ID"),
+                jsonViewModel.getOkByLangValues(),
+                steps,
+                () -> {
+                    flowInFlight = false;
+                    sessionKeys = null;
+                    lastQuotedAmountOut = null;
+                    setAmountSilently(amountInEditText, "");
+                    setAmountSilently(amountOutEditText, "");
+                    updateBalances();
+                }).show();
+    }
+
+    private String[] sessionKeys;
+
+    /** Password-gate each steps-dialog session once: the first step
+     *  that needs signing keys raises the shared unlock prompt; later
+     *  steps reuse the loaded keys. */
+    private void withSessionKeys(final Runnable onReady,
+                                 final TxStepsDialog.StepCallbacks cb) {
+        if (sessionKeys != null) {
+            onReady.run();
+            return;
+        }
+        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
+            final Context appCtx = getActivity().getApplicationContext();
+            new Thread(() -> {
+                try {
+                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
+                    mainHandler.post(() -> {
+                        sessionKeys = keys;
+                        onReady.run();
+                    });
+                } catch (Exception e) {
+                    mainHandler.post(() -> cb.fail(sanitizeError(e.getMessage())));
+                }
+            }).start();
+        }, cb::cancelled);
+    }
+
+    // ---- Approve step -------------------------------------------------
+
+    private void runApproveStep(final TxStepsDialog.StepCallbacks cb) {
         String message = jsonViewModel.lang("swap-approval-confirm-message",
                         "You are approving [QUANTITY] tokens for use in QuantumSwap.")
                 .replace("[QUANTITY]", text(amountInEditText));
@@ -314,18 +490,19 @@ public class SwapFragment extends Fragment {
                 .setTitle(jsonViewModel.lang("approve", "Approve"))
                 .setMessage(message)
                 .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                        (d, w) -> submitApproval(keys))
+                        (d, w) -> withSessionKeys(() -> submitApproval(cb), cb))
                 .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> {
                     d.dismiss();
-                    failFlow(null);
+                    cb.cancelled();
                 })
                 .setCancelable(false)
                 .show();
     }
 
-    private void submitApproval(final String[] keys) {
+    private void submitApproval(final TxStepsDialog.StepCallbacks cb) {
         try {
-            setStatus(jsonViewModel.lang("swap-approval-status-wait", "Please wait, checking..."));
+            cb.status(jsonViewModel.lang("swap-approval-status-wait",
+                    "Please wait, checking..."));
             // Gas estimate for the approve; fall back to the token
             // default when estimation reverts (e.g. RPC hiccup).
             JSONObject estimate = DexPayloads.base();
@@ -336,46 +513,74 @@ public class SwapFragment extends Fragment {
             KeyViewModel.getBridge().dexCallAsync("swapEstimateApproveGas", estimate,
                     new BridgeCallback() {
                         @Override public void onResult(String jsonResult) {
-                            long gasLimit = parseGas(jsonResult, 84000L);
-                            postSubmitApproval(keys, gasLimit);
+                            postSubmitApproval(cb, parseGas(jsonResult, 84000L));
                         }
                         @Override public void onError(String error) {
-                            postSubmitApproval(keys, 84000L);
+                            postSubmitApproval(cb, 84000L);
                         }
                     });
         } catch (Exception e) {
-            failFlow(e.getMessage());
+            cb.fail(sanitizeError(e.getMessage()));
         }
     }
 
-    private void postSubmitApproval(final String[] keys, final long gasLimit) {
+    /** Like uiCallback but errors fail the CURRENT STEP (red cross +
+     *  retryable footer) instead of the whole form. */
+    private BridgeCallback stepUiCallback(final TxStepsDialog.StepCallbacks cb,
+                                          final DataConsumer onData) {
+        return new BridgeCallback() {
+            @Override public void onResult(final String jsonResult) {
+                mainHandler.post(() -> {
+                    if (getActivity() == null) return;
+                    try {
+                        JSONObject result = new JSONObject(jsonResult);
+                        onData.accept(result.getJSONObject("data"));
+                    } catch (Exception e) {
+                        cb.fail(sanitizeError(e.getMessage()));
+                    }
+                });
+            }
+            @Override public void onError(final String error) {
+                mainHandler.post(() -> {
+                    if (getActivity() == null) return;
+                    cb.fail(sanitizeError(error));
+                });
+            }
+        };
+    }
+
+    private void postSubmitApproval(final TxStepsDialog.StepCallbacks cb,
+                                    final long gasLimit) {
         mainHandler.post(() -> {
             try {
-                JSONObject payload = DexPayloads.withKeys(getContext(), keys[0], keys[1]);
+                JSONObject payload = DexPayloads.withKeys(getContext(),
+                        sessionKeys[0], sessionKeys[1]);
                 payload.put("fromTokenValue", fromPicker.getTokenValue());
                 payload.put("fromDecimals", fromPicker.getDecimals());
                 payload.put("amount", text(amountInEditText));
                 payload.put("gasLimit", gasLimit);
                 KeyViewModel.getBridge().dexCallAsync("swapSubmitApproval", payload,
-                        uiCallback(data -> {
-                            setStatus(jsonViewModel.lang("swap-approval-status-pending",
+                        stepUiCallback(cb, data -> {
+                            cb.status(jsonViewModel.lang("swap-approval-status-pending",
                                     "Transaction is still pending..."));
-                            pollAllowance(keys, 0);
+                            cb.confirming(jsonViewModel.lang("tx-step-confirming",
+                                    "Confirming..."));
+                            pollAllowance(cb, 0);
                         }));
             } catch (Exception e) {
-                failFlow(e.getMessage());
+                cb.fail(sanitizeError(e.getMessage()));
             }
         });
     }
 
-    private void pollAllowance(final String[] keys, final int attempt) {
+    private void pollAllowance(final TxStepsDialog.StepCallbacks cb, final int attempt) {
         if (attempt >= APPROVAL_POLL_MAX_ATTEMPTS) {
-            failFlow(jsonViewModel.lang("swap-approval-may-close",
+            cb.fail(jsonViewModel.lang("swap-approval-may-close",
                     "You may close this dialog, the transaction for approval has already been submitted."));
             return;
         }
         if (attempt > 2) {
-            setStatus(jsonViewModel.lang("swap-approval-status-minute",
+            cb.status(jsonViewModel.lang("swap-approval-status-minute",
                     "This can take up to a minute..."));
         }
         mainHandler.postDelayed(() -> {
@@ -398,70 +603,82 @@ public class SwapFragment extends Fragment {
                                                 .optBoolean("sufficient", false);
                                     } catch (Exception ignore) { }
                                     if (sufficient) {
-                                        setStatus(jsonViewModel.lang("swap-approval-completed",
-                                                "Token approval completed. You can continue with Swap."));
-                                        estimateAndSubmitSwap(keys);
+                                        cb.done();
                                     } else {
-                                        pollAllowance(keys, attempt + 1);
+                                        pollAllowance(cb, attempt + 1);
                                     }
                                 });
                             }
                             @Override public void onError(String error) {
-                                mainHandler.post(() -> pollAllowance(keys, attempt + 1));
+                                mainHandler.post(() -> pollAllowance(cb, attempt + 1));
                             }
                         });
             } catch (Exception e) {
-                failFlow(e.getMessage());
+                cb.fail(sanitizeError(e.getMessage()));
             }
         }, APPROVAL_POLL_INTERVAL_MS);
     }
 
-    private void estimateAndSubmitSwap(final String[] keys) {
+    // ---- Swap step ----------------------------------------------------
+
+    private void runSwapStep(final TxStepsDialog.StepCallbacks cb) {
+        String message = jsonViewModel.lang("swap-execute-confirm-message",
+                        "You are swapping [FROM_AMOUNT] [FROM_SYMBOL] for at least [TO_AMOUNT] [TO_SYMBOL].")
+                .replace("[FROM_AMOUNT]", text(amountInEditText))
+                .replace("[FROM_SYMBOL]", sanitizeSymbol(fromPicker.getSymbol()))
+                .replace("[TO_AMOUNT]", minOutForDisplay())
+                .replace("[TO_SYMBOL]", sanitizeSymbol(toPicker.getSymbol()));
+        new AlertDialog.Builder(getContext())
+                .setTitle(jsonViewModel.lang("swap", "Swap"))
+                .setMessage(message)
+                .setPositiveButton(jsonViewModel.getOkByLangValues(),
+                        (d, w) -> withSessionKeys(() -> estimateAndSubmitSwap(cb), cb))
+                .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> {
+                    d.dismiss();
+                    cb.cancelled();
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void estimateAndSubmitSwap(final TxStepsDialog.StepCallbacks cb) {
         try {
-            setStatus(jsonViewModel.getSubmittingTransactionByLangValues());
+            cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
             JSONObject estimate = DexPayloads.base();
             putSwapArgs(estimate);
             estimate.put("recipientAddress", walletAddress);
             KeyViewModel.getBridge().dexCallAsync("swapEstimateGas", estimate,
                     new BridgeCallback() {
                         @Override public void onResult(String jsonResult) {
-                            submitSwap(keys, parseGas(jsonResult, 300000L));
+                            submitSwap(cb, parseGas(jsonResult, 300000L));
                         }
                         @Override public void onError(String error) {
-                            submitSwap(keys, 300000L);
+                            submitSwap(cb, 300000L);
                         }
                     });
         } catch (Exception e) {
-            failFlow(e.getMessage());
+            cb.fail(sanitizeError(e.getMessage()));
         }
     }
 
-    private void submitSwap(final String[] keys, final long gasLimit) {
+    private void submitSwap(final TxStepsDialog.StepCallbacks cb, final long gasLimit) {
         mainHandler.post(() -> {
             if (getActivity() == null) return;
             try {
-                JSONObject payload = DexPayloads.withKeys(getContext(), keys[0], keys[1]);
+                JSONObject payload = DexPayloads.withKeys(getContext(),
+                        sessionKeys[0], sessionKeys[1]);
                 putSwapArgs(payload);
                 payload.put("recipientAddress", walletAddress);
                 payload.put("gasLimit", gasLimit);
                 KeyViewModel.getBridge().dexCallAsync("swapSubmitSwap", payload,
-                        uiCallback(data -> {
-                            flowInFlight = false;
-                            setBusy(false);
-                            clearStatus();
-                            lastQuotedAmountOut = null;
-                            amountOutTextView.setText("-");
-                            String txHash = data.optString("txHash", "");
-                            new AlertDialog.Builder(getContext())
-                                    .setTitle(jsonViewModel.lang("swap", "Swap"))
-                                    .setMessage(jsonViewModel.lang("swap-succeeded",
-                                            "Swap transaction succeeded.") + "\n\n" + txHash)
-                                    .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                                            (d, w) -> d.dismiss())
-                                    .show();
+                        stepUiCallback(cb, data -> {
+                            cb.txHash(data.optString("txHash", ""));
+                            cb.status(jsonViewModel.lang("swap-succeeded",
+                                    "Swap transaction succeeded."));
+                            cb.done();
                         }));
             } catch (Exception e) {
-                failFlow(e.getMessage());
+                cb.fail(sanitizeError(e.getMessage()));
             }
         });
     }
@@ -481,10 +698,23 @@ public class SwapFragment extends Fragment {
     // ---------------------------------------------------------------
 
     private boolean validateInputs(String amountIn) {
-        if (fromPicker.getTokenValue().equalsIgnoreCase(toPicker.getTokenValue())) {
+        String from = fromPicker.getTokenValue();
+        String to = toPicker.getTokenValue();
+        if (from.isEmpty() || to.isEmpty() || from.equalsIgnoreCase(to)) {
             GlobalMethods.ShowErrorDialog(getContext(),
                     jsonViewModel.getErrorTitleByLangValues(),
-                    jsonViewModel.err("identicalTokens", "From and To tokens must differ."));
+                    from.isEmpty() || to.isEmpty()
+                            ? jsonViewModel.lang("select-token", "Select token")
+                            : jsonViewModel.err("identicalTokens",
+                                    "From and To tokens must differ."));
+            return false;
+        }
+        String amountOut = text(amountOutEditText);
+        if (amountOut.isEmpty() || !amountOut.matches("\\d*\\.?\\d+")
+                || Double.parseDouble(amountOut) <= 0) {
+            GlobalMethods.ShowErrorDialog(getContext(),
+                    jsonViewModel.getErrorTitleByLangValues(),
+                    jsonViewModel.err("invalidQuantity", "Enter a valid quantity."));
             return false;
         }
         if (amountIn.isEmpty() || !amountIn.matches("\\d*\\.?\\d+")
@@ -551,8 +781,7 @@ public class SwapFragment extends Fragment {
 
     private void setBusy(boolean busy) {
         progress.setVisibility(busy ? View.VISIBLE : View.GONE);
-        quoteButton.setEnabled(!busy);
-        swapButton.setEnabled(!busy);
+        nextButton.setEnabled(!busy);
     }
 
     private void setStatus(String message) {

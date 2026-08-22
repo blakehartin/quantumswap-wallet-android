@@ -32,11 +32,16 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
+                <!-- Big check appears only once the transaction has
+                     actually SUCCEEDED on-chain (desktop parity: the
+                     status icon is the state signal, not decoration). -->
                 <ImageView
+                    android:id="@+id/imageView_send_completed_check"
                     android:layout_margin="10dp"
                     android:layout_marginEnd="12dp"
                     android:layout_width="50dp"
                     android:layout_height="50dp"
+                    android:visibility="gone"
                     android:background="@drawable/img_right" />
 
                 <!--
@@ -51,9 +56,11 @@
                     full theme rationale.
                 -->
                 <TextView
+                    android:id="@+id/textView_send_completed_message"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:layout_marginStart="10dp"
                     android:layout_marginEnd="10dp"
                     android:layout_marginTop="10dp"
                     android:layout_marginBottom="10dp"
@@ -134,6 +141,45 @@
                     android:background="@drawable/image_selector"
                     android:src="@drawable/address_explore"
                     app:tint="@color/colorCommon6" />
+            </LinearLayout>
+
+            <!-- Desktop #divSendCompletedStatus: 30dp live status icon
+                 (spinner while pending -> check on success / alert on
+                 failure) beside a rotating status line, polled against
+                 the scan API every 9s. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="4dp">
+
+                <ProgressBar
+                    android:id="@+id/progress_send_completed_status"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:indeterminate="true"
+                    android:indeterminateDrawable="@drawable/progress" />
+
+                <ImageView
+                    android:id="@+id/imageView_send_completed_status"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:visibility="gone"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/textView_send_completed_status"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:textSize="13sp"
+                    android:textColor="@color/colorCommon6" />
+
             </LinearLayout>
 
             <TextView

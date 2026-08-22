@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace 'com.quantumswap.app'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.quantumswap.app"
@@ -26,7 +26,7 @@ android {
         // negotiated automatically when the server also supports
         // it. See TlsPinning.applyTo for the full posture comment.
         minSdk 29
-        targetSdk 35
+        targetSdk 36
         versionCode 3
         versionName "1.2"
 

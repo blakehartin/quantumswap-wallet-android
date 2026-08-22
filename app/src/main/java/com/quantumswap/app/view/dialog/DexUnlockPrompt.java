@@ -53,6 +53,16 @@ public final class DexUnlockPrompt {
     public static void show(final Activity activity,
                             final JsonViewModel jsonViewModel,
                             final OnUnlocked onUnlocked) {
+        show(activity, jsonViewModel, onUnlocked, null);
+    }
+
+    /** Variant with a close/dismiss callback so step-driven flows
+     *  (TxStepsDialog) can re-enable their footer button when the
+     *  user backs out of the password gate. */
+    public static void show(final Activity activity,
+                            final JsonViewModel jsonViewModel,
+                            final OnUnlocked onUnlocked,
+                            final Runnable onClosed) {
         final AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle("")
                 .setView(R.layout.unlock_dialog_fragment)
@@ -89,7 +99,10 @@ public final class DexUnlockPrompt {
         closeButton.setText(jsonViewModel.getCloseByLangValues());
         UnlockDialogs.applyMandatory(dialog, false);
 
-        closeButton.setOnClickListener(v -> dialog.dismiss());
+        closeButton.setOnClickListener(v -> {
+            dialog.dismiss();
+            if (onClosed != null) onClosed.run();
+        });
 
         unlockButton.setOnClickListener(v -> {
             final String password = passwordEditText.getText() == null

@@ -13,7 +13,6 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -96,11 +95,11 @@ public class PoolsFragment extends Fragment {
 
         String customLabel = jsonViewModel.lang("custom-contract-address", "Custom...");
         tokenAPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_pools_tokenA),
+                (Button) view.findViewById(R.id.spinner_pools_tokenA),
                 (EditText) view.findViewById(R.id.editText_pools_tokenA_custom),
                 walletAddress, customLabel);
         tokenBPicker = new TokenPickerController(getContext(),
-                (Spinner) view.findViewById(R.id.spinner_pools_tokenB),
+                (Button) view.findViewById(R.id.spinner_pools_tokenB),
                 (EditText) view.findViewById(R.id.editText_pools_tokenB_custom),
                 walletAddress, customLabel);
 
@@ -206,48 +205,61 @@ public class PoolsFragment extends Fragment {
                                     "A pool already exists for this pair."));
                             return;
                         }
-                        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
-                            final Context appCtx = getActivity().getApplicationContext();
-                            new Thread(() -> {
-                                try {
-                                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                                    mainHandler.post(() -> submitCreate(keys));
-                                } catch (Exception e) {
-                                    mainHandler.post(() -> failFlow(e.getMessage()));
-                                }
-                            }).start();
-                        });
+                        setBusy(false);
+                        showCreateSteps();
                     }));
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void submitCreate(final String[] keys) {
+    /** Desktop tx-steps model: one "Create Pair" step driven by the
+     *  shared steps dialog. */
+    private void showCreateSteps() {
+        String label = jsonViewModel.lang("create-pair", "Create Pair");
+        java.util.List<com.quantumswap.app.view.dialog.TxStepsDialog.Step> steps =
+                new java.util.ArrayList<>();
+        steps.add(new com.quantumswap.app.view.dialog.TxStepsDialog.Step(label,
+                this::runCreateStep));
+        new com.quantumswap.app.view.dialog.TxStepsDialog(getContext(),
+                label,
+                jsonViewModel.lang("transaction-id", "Transaction ID"),
+                jsonViewModel.getOkByLangValues(),
+                steps,
+                this::loadPools).show();
+    }
+
+    private void runCreateStep(final com.quantumswap.app.view.dialog.TxStepsDialog.StepCallbacks cb) {
+        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
+            final Context appCtx = getActivity().getApplicationContext();
+            new Thread(() -> {
+                try {
+                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
+                    mainHandler.post(() -> submitCreate(keys, cb));
+                } catch (Exception e) {
+                    mainHandler.post(() -> cb.fail(e.getMessage()));
+                }
+            }).start();
+        }, cb::cancelled);
+    }
+
+    private void submitCreate(final String[] keys,
+                              final com.quantumswap.app.view.dialog.TxStepsDialog.StepCallbacks cb) {
         try {
-            setStatus(jsonViewModel.getSubmittingTransactionByLangValues());
+            cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
             JSONObject submit = DexPayloads.withKeys(getActivity().getApplicationContext(), keys[0], keys[1]);
             submit.put("tokenAValue", tokenAPicker.getTokenValue());
             submit.put("tokenBValue", tokenBPicker.getTokenValue());
             submit.put("gasLimit", 3000000);
             KeyViewModel.getBridge().dexCallAsync("poolsSubmitCreatePair", submit,
                     uiCallback(data -> {
-                        setBusy(false);
-                        clearStatus();
-                        String txHash = data.optString("txHash", "");
-                        new AlertDialog.Builder(getContext())
-                                .setTitle(jsonViewModel.lang("create-pair", "Create Pair"))
-                                .setMessage(jsonViewModel.lang("transaction-submitted",
-                                        "Transaction submitted.") + "\n\n" + txHash)
-                                .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                                        (d, w) -> {
-                                            d.dismiss();
-                                            loadPools();
-                                        })
-                                .show();
+                        cb.txHash(data.optString("txHash", ""));
+                        cb.status(jsonViewModel.lang("transaction-submitted",
+                                "Transaction submitted."));
+                        cb.done();
                     }));
         } catch (Exception e) {
-            failFlow(e.getMessage());
+            cb.fail(e.getMessage());
         }
     }
 

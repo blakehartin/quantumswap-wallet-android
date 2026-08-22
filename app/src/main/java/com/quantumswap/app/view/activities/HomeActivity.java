@@ -8,6 +8,8 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
+import android.graphics.LinearGradient;
+import android.graphics.Shader;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -60,6 +62,7 @@ import com.quantumswap.app.view.fragment.SettingsFragment;
 import com.quantumswap.app.view.fragment.RevealWalletFragment;
 import com.quantumswap.app.view.fragment.AccountTransactionsFragment;
 import com.quantumswap.app.view.fragment.SwapFragment;
+import com.quantumswap.app.view.fragment.TokenCreateFragment;
 import com.quantumswap.app.view.fragment.AdvancedFragment;
 import com.quantumswap.app.view.fragment.LiquidityFragment;
 import com.quantumswap.app.view.fragment.PoolsFragment;
@@ -71,7 +74,8 @@ import com.quantumswap.app.keystorage.SecureStorage;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
 
-import com.google.android.material.bottomnavigation.BottomNavigationView;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -95,6 +99,7 @@ public class HomeActivity extends FragmentActivity implements
         com.quantumswap.app.view.fragment.BackupOptionsFragment.OnBackupOptionsCompleteListener,
         SwapFragment.OnSwapCompleteListener,
         AdvancedFragment.OnAdvancedCompleteListener,
+        TokenCreateFragment.OnTokenCreateCompleteListener,
         LiquidityFragment.OnLiquidityCompleteListener,
         PoolsFragment.OnPoolsCompleteListener,
         ReleasesFragment.OnReleasesCompleteListener {
@@ -133,6 +138,21 @@ public class HomeActivity extends FragmentActivity implements
         idleLockHandler.postDelayed(idleLockRunnable, UNLOCK_TIMEOUT_MS);
     }
 
+    /** Desktop-parity brand wordmark fill (theme-quantum.css
+     *  .animate-character): white across "Quantum", then violet into cyan
+     *  across "Swap". The shader is in view coordinates, so this relies on
+     *  the wordmark TextView being wrap_content (view width == text width);
+     *  a centered match_parent view would misplace the gradient. */
+    private static void applyBrandWordmarkGradient(TextView tv) {
+        float width = tv.getPaint().measureText(tv.getText().toString());
+        if (width <= 0) return;
+        tv.getPaint().setShader(new LinearGradient(0, 0, width, 0,
+                new int[]{0xFFFFFFFF, 0xFFFFFFFF, 0xFFC084FC, 0xFF00E5FF},
+                new float[]{0f, 0.45f, 0.7f, 1f},
+                Shader.TileMode.CLAMP));
+        tv.invalidate();
+    }
+
     private LinearLayout topLinearLayout;
     private ViewGroup.LayoutParams topLinearLayoutParams;
     private RelativeLayout centerRelativeLayout;
@@ -147,7 +167,8 @@ public class HomeActivity extends FragmentActivity implements
     private TextView balanceValueTextView;
     private ProgressBar progressBar;
     private ImageButton refreshImageButton;
-    private BottomNavigationView bottomNavigationView;
+    private DrawerLayout drawerLayout;
+    private ImageButton burgerButton;
 
     private LinearLayout linerLayoutOffline;
     private ImageView imageViewRetry;
@@ -233,7 +254,10 @@ public class HomeActivity extends FragmentActivity implements
                             return insets;
                         }
                     });
-            ViewCompat.setOnApplyWindowInsetsListener(blockChainNetworkTextView,
+            // The chip and burger are glass pills with their own internal
+            // padding, so the status-bar inset goes on their top MARGIN
+            // (not padding, which would distort the pill).
+            OnApplyWindowInsetsListener floatingChromeInsets =
                     new OnApplyWindowInsetsListener() {
                         @Override
                         public WindowInsetsCompat onApplyWindowInsets(
@@ -241,9 +265,58 @@ public class HomeActivity extends FragmentActivity implements
                             Insets bars = insets.getInsets(
                                     WindowInsetsCompat.Type.statusBars()
                                             | WindowInsetsCompat.Type.displayCutout());
-                            v.setPadding(v.getPaddingLeft(), bars.top,
-                                    v.getPaddingRight(), v.getPaddingBottom());
+                            ViewGroup.MarginLayoutParams mlp =
+                                    (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+                            int base = Math.round(8 * getResources()
+                                    .getDisplayMetrics().density);
+                            if (mlp.topMargin != base + bars.top) {
+                                mlp.topMargin = base + bars.top;
+                                v.setLayoutParams(mlp);
+                            }
                             return insets;
+                        }
+                    };
+            ViewCompat.setOnApplyWindowInsetsListener(
+                    blockChainNetworkTextView, floatingChromeInsets);
+            ViewCompat.setOnApplyWindowInsetsListener(
+                    findViewById(R.id.imageButton_home_burger), floatingChromeInsets);
+
+            // Desktop keeps the brand row centered at every width; on
+            // narrow screens where the centered wordmark would collide
+            // with the network chip (or burger), shift it left instead -
+            // only when an actual overlap is detected.
+            final LinearLayout brandRow =
+                    (LinearLayout) findViewById(R.id.linearLayout_home_brand_row);
+            final View brandLogo = findViewById(R.id.imageView_home_logo);
+            final TextView brandText = (TextView) findViewById(R.id.textView_home_tile);
+            brandRow.getViewTreeObserver().addOnGlobalLayoutListener(
+                    new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                        @Override
+                        public void onGlobalLayout() {
+                            int bandW = topLinearLayout.getWidth();
+                            int contentW = brandText.getRight() - brandLogo.getLeft();
+                            if (bandW <= 0 || contentW <= 0) return;
+                            float density = getResources().getDisplayMetrics().density;
+                            int gap = Math.round(8 * density);
+                            // Left obstacle: burger (12dp margin + 36dp).
+                            int leftEdge = Math.round(56 * density);
+                            int rightEdge = blockChainNetworkTextView
+                                    .getVisibility() == View.VISIBLE
+                                    ? blockChainNetworkTextView.getLeft() - gap
+                                    : bandW;
+                            int centeredRight = (bandW + contentW) / 2;
+                            boolean overlap = centeredRight > rightEdge
+                                    || (bandW - contentW) / 2 < leftEdge;
+                            int wanted = overlap
+                                    ? (android.view.Gravity.START
+                                        | android.view.Gravity.CENTER_VERTICAL)
+                                    : android.view.Gravity.CENTER;
+                            int wantedPad = overlap ? leftEdge : 0;
+                            if (brandRow.getGravity() != wanted
+                                    || brandRow.getPaddingStart() != wantedPad) {
+                                brandRow.setGravity(wanted);
+                                brandRow.setPaddingRelative(wantedPad, 0, 0, 0);
+                            }
                         }
                     });
 
@@ -271,8 +344,10 @@ public class HomeActivity extends FragmentActivity implements
             TextView swapTitleTextView = (TextView) findViewById(R.id.textView_home_swap_title);
             ImageButton swapImageButton = (ImageButton) findViewById(R.id.imageButton_home_swap);
 
-            //Bottom navigation
-            bottomNavigationView = (BottomNavigationView) findViewById(R.id.bottom_navigation);
+            // Burger + navigation drawer (desktop parity: the bottom nav
+            // was removed; Wallets/Settings live in the burger menu).
+            drawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout_home);
+            burgerButton = (ImageButton) findViewById(R.id.imageButton_home_burger);
 
             linerLayoutOffline = (LinearLayout) findViewById(R.id.linerLayout_home_offline);
             imageViewRetry = (ImageView) findViewById(R.id.image_retry);
@@ -281,6 +356,7 @@ public class HomeActivity extends FragmentActivity implements
             Button buttonRetry = (Button) findViewById(R.id.button_retry);
 
             titleTextView.setText(jsonViewModel.getTitleByLangValues());
+            applyBrandWordmarkGradient(titleTextView);
             //balanceTitleTextView.setText(jsonViewModel.getBalanceByLangValues());
             balanceCoinSymbolTextView.setText(GlobalMethods.COIN_SYMBOL);
 
@@ -429,28 +505,42 @@ public class HomeActivity extends FragmentActivity implements
                 }
             });
 
-            bottomNavigationView.setOnNavigationItemSelectedListener(new BottomNavigationView.OnNavigationItemSelectedListener() {
+            burgerButton.setOnClickListener(new View.OnClickListener() {
                 @Override
-                public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-                    int id = item.getItemId();
-                    if (id == R.id.nav_wallets) {
-                        if (walletAddress.startsWith(GlobalMethods.ADDRESS_START_PREFIX)) {
-                            if (walletAddress.length() == GlobalMethods.ADDRESS_LENGTH){
+                public void onClick(View v) {
+                    drawerLayout.openDrawer(GravityCompat.START);
+                }
+            });
+            findViewById(R.id.linearLayout_drawer_wallets)
+                    .setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            drawerLayout.closeDrawer(GravityCompat.START);
+                            if (walletAddress.startsWith(GlobalMethods.ADDRESS_START_PREFIX)
+                                    && walletAddress.length() == GlobalMethods.ADDRESS_LENGTH) {
                                 screenViewType(1);
                                 beginTransactionNow(WalletsFragment.newInstance(), bundle);
                             }
                         }
-                        return true;
-                    } else if (id == R.id.nav_settings) {
-                        screenViewType(1);
-                        beginTransactionNow(SettingsFragment.newInstance(), bundle);
-                        return true;
-                    }
-                    return false;
-                }
-            });
-
-            deselectAllNavItems();
+                    });
+            findViewById(R.id.linearLayout_drawer_settings)
+                    .setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            drawerLayout.closeDrawer(GravityCompat.START);
+                            screenViewType(1);
+                            beginTransactionNow(SettingsFragment.newInstance(), bundle);
+                        }
+                    });
+            findViewById(R.id.linearLayout_drawer_advanced)
+                    .setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            drawerLayout.closeDrawer(GravityCompat.START);
+                            screenViewType(1);
+                            beginTransactionNow(AdvancedFragment.newInstance(), bundle);
+                        }
+                    });
 
             SecureStorage secureStorage = KeyViewModel.getSecureStorage();
             boolean secureInitialized = secureStorage != null && secureStorage.isInitialized(getApplicationContext());
@@ -530,6 +620,9 @@ public class HomeActivity extends FragmentActivity implements
             return;
         } else if (current instanceof PoolsFragment) {
             onPoolsCompleteByBackArrow();
+            return;
+        } else if (current instanceof TokenCreateFragment) {
+            onTokenCreateCompleteByBackArrow();
             return;
         } else if (current instanceof AdvancedFragment) {
             onAdvancedCompleteByBackArrow();
@@ -896,8 +989,31 @@ public class HomeActivity extends FragmentActivity implements
     @Override
     public void onAdvancedCompleteByBackArrow() {
         try {
+            // Advanced is now a top-level burger-menu entry (not a
+            // Settings child), so Back returns to the main wallet
+            // screen like the other top-level screens.
+            screenViewType(0);
+            beginTransaction(HomeMainFragment.newInstance(), bundle);
+        } catch (Exception e) {
+            GlobalMethods.ExceptionError(getApplicationContext(), TAG, e);
+        }
+    }
+
+    @Override
+    public void onAdvancedCompleteByTokens() {
+        try {
             screenViewType(1);
-            beginTransaction(SettingsFragment.newInstance(), bundle);
+            beginTransaction(TokenCreateFragment.newInstance(), bundle);
+        } catch (Exception e) {
+            GlobalMethods.ExceptionError(getApplicationContext(), TAG, e);
+        }
+    }
+
+    @Override
+    public void onTokenCreateCompleteByBackArrow() {
+        try {
+            screenViewType(1);
+            beginTransaction(AdvancedFragment.newInstance(), bundle);
         } catch (Exception e) {
             GlobalMethods.ExceptionError(getApplicationContext(), TAG, e);
         }
@@ -1416,31 +1532,30 @@ public class HomeActivity extends FragmentActivity implements
     private void screenViewType(int status) {
         try {
             // 0 - default main screen, 1 - fragment screen, -1 - Start app (default)
-
-            int screenHeight = 0;
-
+            // Desktop parity (app.ts setHeaderBand): home grows the band
+            // (desktop 168px) so the wallet card overlaps it (card has a
+            // -56dp top margin); sub-screens use the compact band that
+            // just wraps the brand row (desktop min-height 64px). The
+            // burger replaces the removed bottom nav and shows on all
+            // post-start screens, like the desktop burger post-unlock.
             switch (status) {
                 case 0:
-                    topLinearLayoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                    topLinearLayout.setLayoutParams(topLinearLayoutParams);
-                    bottomNavigationView.setVisibility(View.VISIBLE);
+                    // 68 - 56 (card's negative margin) = 12dp visible gap
+                    // between the brand row and the wallet card.
+                    setBandBottomPadding(68);
+                    burgerButton.setVisibility(View.VISIBLE);
                     centerRelativeLayout.setVisibility(View.VISIBLE);
                     blockChainNetworkTextView.setVisibility(View.VISIBLE);
-                    deselectAllNavItems();
                     break;
                 case 1:
-                    screenHeight = (Utility.calculateScreenWidthDp(getApplicationContext()) * 30 / 100);
-                    topLinearLayoutParams.height = screenHeight;
-                    topLinearLayout.setLayoutParams(topLinearLayoutParams);
-                    bottomNavigationView.setVisibility(View.VISIBLE);
+                    setBandBottomPadding(12);
+                    burgerButton.setVisibility(View.VISIBLE);
                     centerRelativeLayout.setVisibility(View.GONE);
                     blockChainNetworkTextView.setVisibility(View.GONE);
                     break;
                 default:
-                    screenHeight = (Utility.calculateScreenWidthDp(getApplicationContext()) * 30 / 100);
-                    topLinearLayoutParams.height = screenHeight;
-                    topLinearLayout.setLayoutParams(topLinearLayoutParams);
-                    bottomNavigationView.setVisibility(View.GONE);
+                    setBandBottomPadding(12);
+                    burgerButton.setVisibility(View.GONE);
                     centerRelativeLayout.setVisibility(View.GONE);
                     blockChainNetworkTextView.setVisibility(View.GONE);
             }
@@ -1449,12 +1564,15 @@ public class HomeActivity extends FragmentActivity implements
         }
     }
 
-    private void deselectAllNavItems() {
-        bottomNavigationView.getMenu().setGroupCheckable(0, true, false);
-        for (int i = 0; i < bottomNavigationView.getMenu().size(); i++) {
-            bottomNavigationView.getMenu().getItem(i).setChecked(false);
-        }
-        bottomNavigationView.getMenu().setGroupCheckable(0, true, true);
+    /** Bottom padding of the header band in dp, preserving the
+     *  status-bar top inset applied by the insets listener. */
+    private void setBandBottomPadding(int dp) {
+        int px = Math.round(dp * getResources().getDisplayMetrics().density);
+        topLinearLayout.setPadding(
+                topLinearLayout.getPaddingLeft(),
+                topLinearLayout.getPaddingTop(),
+                topLinearLayout.getPaddingRight(),
+                px);
     }
 
     private void getCurrentWallet(String indexKey) {
@@ -1541,7 +1659,7 @@ public class HomeActivity extends FragmentActivity implements
      * intentionally preserved instead of being reset to "0" before the
      * fetch, so a transient failure does not visually wipe the balance.
      */
-    private void getBalanceByAccount(String address, TextView balanceValueTextView,
+    private void getBalanceByAccount(final String address, TextView balanceValueTextView,
                                      ProgressBar progressBar, boolean userInitiated) {
         try {
             //Internet connection check
@@ -1561,6 +1679,9 @@ public class HomeActivity extends FragmentActivity implements
                             String quantity = CoinUtils.formatWei(value);
 
                             balanceValueTextView.setText(quantity);
+                            // Cache for the DEX pickers' native-Q rows.
+                            GlobalMethods.CURRENT_WALLET_BALANCE_FORMATTED = quantity;
+                            GlobalMethods.CURRENT_WALLET_BALANCE_ADDRESS = address;
                         }
                         setRefreshLoading(false);
                     }

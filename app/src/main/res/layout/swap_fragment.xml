@@ -91,13 +91,22 @@
                         android:textStyle="bold"
                         android:textColor="@color/colorCommon1" />
 
-                    <Spinner
+                    <Button
                         android:id="@+id/spinner_swap_from"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="@drawable/spinner_dropdown_background"
-                        android:padding="10dp" />
+                        android:minHeight="40dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingBottom="7dp"
+                        android:gravity="start|center_vertical"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:textColor="@color/colorWhite"
+                        android:drawableEnd="@drawable/caret_down_outline"
+                        android:background="@drawable/token_picker_trigger_bg" />
 
                     <EditText
                         android:id="@+id/editText_swap_from_custom"
@@ -113,17 +122,78 @@
                         android:background="@drawable/text_input_selector"
                         android:visibility="gone" />
 
-                    <EditText
-                        android:id="@+id/editText_swap_amount_in"
+                    <!-- Desktop #divSwapFromQuantityBox: balance row +
+                         quantity input; hidden until BOTH tokens are
+                         selected (updateSwapQuantityVisibility). -->
+                    <LinearLayout
+                        android:id="@+id/linearLayout_swap_from_box"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:inputType="numberDecimal"
-                        android:maxLength="40"
-                        android:textSize="16dp"
-                        android:textColor="@color/colorCommon6"
-                        android:textColorHint="@color/colorMutedSecondaryText"
-                        android:background="@drawable/text_input_selector" />
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/textView_swap_from_balance_label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="12sp"
+                                android:textColor="@color/colorCommon3" />
+
+                            <TextView
+                                android:id="@+id/textView_swap_from_balance"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:textSize="12sp"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:textColor="@color/colorCommon6"
+                                android:text="0" />
+
+                        </LinearLayout>
+
+                        <EditText
+                            android:id="@+id/editText_swap_amount_in"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:inputType="numberDecimal"
+                            android:maxLength="40"
+                            android:textSize="16dp"
+                            android:textColor="@color/colorCommon6"
+                            android:textColorHint="@color/colorMutedSecondaryText"
+                            android:background="@drawable/text_input_selector" />
+
+                    </LinearLayout>
+
+                    <!-- Desktop .swap-flip: 40dp circle centered between
+                         the From block and the To heading; hidden until
+                         both tokens are selected. -->
+                    <LinearLayout
+                        android:id="@+id/linearLayout_swap_flip"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="-8dp"
+                        android:gravity="center"
+                        android:visibility="gone">
+
+                        <ImageButton
+                            android:id="@+id/imageButton_swap_flip"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="10dp"
+                            android:scaleType="fitCenter"
+                            android:background="@drawable/swap_flip_bg"
+                            android:src="@drawable/ic_swap_flip" />
+
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/textView_swap_to_label"
@@ -134,13 +204,22 @@
                         android:textStyle="bold"
                         android:textColor="@color/colorCommon1" />
 
-                    <Spinner
+                    <Button
                         android:id="@+id/spinner_swap_to"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="@drawable/spinner_dropdown_background"
-                        android:padding="10dp" />
+                        android:minHeight="40dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingBottom="7dp"
+                        android:gravity="start|center_vertical"
+                        android:textAllCaps="false"
+                        android:textSize="14sp"
+                        android:textColor="@color/colorWhite"
+                        android:drawableEnd="@drawable/caret_down_outline"
+                        android:background="@drawable/token_picker_trigger_bg" />
 
                     <EditText
                         android:id="@+id/editText_swap_to_custom"
@@ -156,29 +235,53 @@
                         android:background="@drawable/text_input_selector"
                         android:visibility="gone" />
 
+                    <!-- Desktop #divSwapToQuantityBox: balance row + the
+                         editable To quantity (the quote target - desktop
+                         has no read-only estimate label). -->
                     <LinearLayout
+                        android:id="@+id/linearLayout_swap_to_box"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="horizontal">
+                        android:orientation="vertical"
+                        android:visibility="gone">
 
-                        <TextView
-                            android:id="@+id/textView_swap_amount_out_label"
-                            android:layout_width="wrap_content"
+                        <LinearLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:textSize="14dp"
-                            android:textColor="@color/colorCommon3" />
+                            android:layout_marginTop="6dp"
+                            android:orientation="horizontal">
 
-                        <TextView
-                            android:id="@+id/textView_swap_amount_out"
-                            android:layout_width="0dp"
+                            <TextView
+                                android:id="@+id/textView_swap_to_balance_label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="12sp"
+                                android:textColor="@color/colorCommon3" />
+
+                            <TextView
+                                android:id="@+id/textView_swap_to_balance"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:textSize="12sp"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:textColor="@color/colorCommon6"
+                                android:text="0" />
+
+                        </LinearLayout>
+
+                        <EditText
+                            android:id="@+id/editText_swap_amount_out"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="8dp"
+                            android:layout_marginTop="4dp"
+                            android:inputType="numberDecimal"
+                            android:maxLength="40"
                             android:textSize="16dp"
-                            android:textStyle="bold"
-                            android:textColor="@color/quantumCyan"
-                            android:text="-" />
+                            android:textColor="@color/colorCommon6"
+                            android:textColorHint="@color/colorMutedSecondaryText"
+                            android:background="@drawable/text_input_selector" />
 
                     </LinearLayout>
 
@@ -237,38 +340,15 @@
                         android:textColor="@color/quantumAmber"
                         android:visibility="gone" />
 
+                    <!-- Desktop footer: quote spinner + single Next button
+                         (right-aligned); Get Quote / Swap merged into the
+                         Next-driven flow. -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
-                        android:gravity="center"
+                        android:gravity="end|center_vertical"
                         android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/button_swap_quote"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="4dp"
-                            android:paddingLeft="20dp"
-                            android:paddingRight="20dp"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="6dp"
-                            android:textAllCaps="false"
-                            android:textColor="@color/colorWhite"
-                            android:background="@drawable/button_green_selector" />
-
-                        <Button
-                            android:id="@+id/button_swap_execute"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="4dp"
-                            android:paddingLeft="20dp"
-                            android:paddingRight="20dp"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="6dp"
-                            android:textAllCaps="false"
-                            android:textColor="@color/colorWhite"
-                            android:background="@drawable/button_green_selector" />
 
                         <ProgressBar
                             android:id="@+id/progress_swap"
@@ -278,6 +358,19 @@
                             android:indeterminate="true"
                             android:indeterminateDrawable="@drawable/progress"
                             android:visibility="gone" />
+
+                        <Button
+                            android:id="@+id/button_swap_next"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_margin="4dp"
+                            android:paddingLeft="20dp"
+                            android:paddingRight="20dp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="6dp"
+                            android:textAllCaps="false"
+                            android:textColor="@color/colorWhite"
+                            android:background="@drawable/button_green_selector" />
 
                     </LinearLayout>
 

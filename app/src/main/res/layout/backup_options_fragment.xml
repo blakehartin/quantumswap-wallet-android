@@ -2,7 +2,7 @@
 <!--
   Backup options screen. Mirrors iOS BackupOptionsViewController:
   back arrow + title + body + hairline divider + Cloud + File buttons.
-  Deliberately NO Done/Next button — iOS omits it on this surface and
+  Deliberately NO Done/Next button â€” iOS omits it on this surface and
   we match. The flow is: tap Cloud or File, the existing
   BackupPasswordDialog asks for a NEW backup password, and the SAF
   picker takes over from there.
@@ -27,13 +27,13 @@
              Android screen's back arrow (account_transactions, send,
              receive, reveal, settings, wallet, blockchain_network,
              etc. all use the same 55dp / 5dp pair sitting flush at
-             the screen edge — the visible icon's left edge then
+             the screen edge â€” the visible icon's left edge then
              lands at 5dp). The body content below applies its own
              20dp horizontal margin so the title / buttons keep their
              readable indent without dragging the back arrow inward.
              The earlier outer paddingLeft="20dp" pushed THIS row
              inward by an extra 20dp, making the icon land at 25dp
-             from the screen edge — visibly further right than every
+             from the screen edge â€” visibly further right than every
              sibling screen. -->
         <FrameLayout
             android:layout_width="match_parent"
@@ -53,7 +53,7 @@
 
         </FrameLayout>
 
-        <!-- Title — 18sp bold, multiline. -->
+        <!-- Title â€” 18sp bold, multiline. -->
         <TextView
             android:id="@+id/textView_backup_options_title"
             android:layout_width="match_parent"
@@ -65,7 +65,7 @@
             android:textColor="@color/colorCommon6"
             android:layout_marginBottom="14dp" />
 
-        <!-- Body — 13sp, multiline. -->
+        <!-- Body â€” 13sp, multiline. -->
         <TextView
             android:id="@+id/textView_backup_options_body"
             android:layout_width="match_parent"
@@ -76,7 +76,7 @@
             android:textColor="@color/colorCommon6"
             android:layout_marginBottom="14dp" />
 
-        <!-- Hairline divider — 1dp, semi-transparent, mirrors iOS makeRule(). -->
+        <!-- Hairline divider â€” 1dp, semi-transparent, mirrors iOS makeRule(). -->
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -86,7 +86,7 @@
             android:background="@drawable/line_2_shape"
             android:layout_marginBottom="14dp" />
 
-        <!-- File backup button — full-width, 44dp tall pill. -->
+        <!-- File backup button â€” full-width, 44dp tall pill. -->
         <Button
             android:id="@+id/button_backup_options_file"
             android:layout_width="match_parent"
@@ -94,7 +94,7 @@
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:textAllCaps="false"
-            android:textColor="@color/colorCommon7"
+            android:textColor="@color/colorWhite"
             android:background="@drawable/button_green_selector" />
 
     </LinearLayout>

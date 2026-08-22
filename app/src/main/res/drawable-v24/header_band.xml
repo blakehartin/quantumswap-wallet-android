@@ -1,0 +1,19 @@
+<!-- Header band, ported from desktop theme-quantum.css .gradient:
+     near-black glass fill rgba(2,2,5,0.92) over the body's ambient
+     orbs, finished with the same 1dp hairline bottom border
+     rgba(255,255,255,0.08) (=var(- -border)). Replaces the old
+     violet banner sweep (gradient_layer.xml) so the band reads as
+     the desktop's black top bar. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#EB020205" />
+        </shape>
+    </item>
+    <item android:gravity="bottom">
+        <shape android:shape="rectangle">
+            <size android:height="1dp" />
+            <solid android:color="#14FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

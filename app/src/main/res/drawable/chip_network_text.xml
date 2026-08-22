@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop .networkbox text: white 85% at rest, accent-literal
+     (#c084fc) on press. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true" android:color="#FFC084FC" />
+    <item android:color="#D9FFFFFF" />
+</selector>

@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Pressed/normal selector for the network-dialog cancel button.
-    Pressed state reuses the shared button_gray_shadow_selected
-    (semi-transparent dark overlay) which is drawn on top of the
-    constant-gray base, so the press feedback works in both light
-    and dark modes.
+    Cancel/destructive button, desktop theme-quantum.css .cancel:
+    red glass - rgba(255,90,100,0.12) fill with a 45% stroke at rest,
+    deepening to 24% fill on press; 9dp radius. Text color at the
+    usage site should be #FF9AA2 (desktop .cancel rest color).
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true" android:drawable="@drawable/button_gray_shadow_selected"/>
-    <item android:drawable="@drawable/button_network_cancel_shadow"/>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#3DFF5A64" />
+            <stroke android:width="1dp" android:color="#B3FF5A64" />
+            <corners android:radius="9dp" />
+            <padding android:bottom="5dp" android:left="10dp"
+                android:right="10dp" android:top="5dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1FFF5A64" />
+            <stroke android:width="1dp" android:color="#73FF5A64" />
+            <corners android:radius="9dp" />
+            <padding android:bottom="5dp" android:left="10dp"
+                android:right="10dp" android:top="5dp" />
+        </shape>
+    </item>
 </selector>

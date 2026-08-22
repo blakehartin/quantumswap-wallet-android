@@ -117,6 +117,13 @@ public class GlobalMethods {
     public static volatile List<AccountTokenSummary> CURRENT_WALLET_TOKEN_LIST = new ArrayList<>();
     public static volatile String CURRENT_WALLET_TOKEN_LIST_ADDRESS = null;
 
+    // Native-coin balance cache (display-formatted, CoinUtils.formatWei),
+    // refreshed by HomeActivity's balance fetch. Lets the DEX token
+    // picker show the live Q balance (desktop getSwapBalanceForSymbol
+    // reads walletStore.currentAccountDetails.balance the same way).
+    public static volatile String CURRENT_WALLET_BALANCE_FORMATTED = null;
+    public static volatile String CURRENT_WALLET_BALANCE_ADDRESS = null;
+
     public static int DURATION = 20;
     public static int MINIMUM_PASSWORD_LENGTH = 12;
     public static int ADDRESS_LENGTH = 66;

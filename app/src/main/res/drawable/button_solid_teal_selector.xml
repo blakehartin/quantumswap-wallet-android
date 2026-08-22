@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solid (opaque) teal action button for LIGHT surfaces - the glass
+     16%-alpha fill used on dark cards washes out to a dim tint on a
+     light background (e.g. the QR-capture screen). Rest: full-strength
+     theme teal; pressed: a darker shade. White label text. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FF0E9384" />
+            <stroke android:width="1dp" android:color="#FF0E9384" />
+            <corners android:radius="9dp" />
+            <padding android:bottom="10dp" android:left="10dp"
+                android:right="10dp" android:top="10dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/quantumTeal" />
+            <stroke android:width="1dp" android:color="@color/quantumTeal" />
+            <corners android:radius="9dp" />
+            <padding android:bottom="10dp" android:left="10dp"
+                android:right="10dp" android:top="10dp" />
+        </shape>
+    </item>
+</selector>
