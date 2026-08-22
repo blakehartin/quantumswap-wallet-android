@@ -78,13 +78,40 @@
                         android:gravity="center_horizontal|center_vertical"
                         android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/textView_send_langValue_send"
+                        <!-- Desktop send header: title + gas chip (fee label + pump). -->
+                        <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:textSize="20dp"
-                            android:textStyle="bold"
-                            android:textColor="@color/colorCommon6"/>
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/textView_send_langValue_send"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:textSize="20dp"
+                                android:textStyle="bold"
+                                android:textColor="@color/colorCommon6"/>
+
+                            <TextView
+                                android:id="@+id/textView_send_gas_fee"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="8dp"
+                                android:textSize="12sp"
+                                android:textColor="#B3FFFFFF" />
+
+                            <ImageView
+                                android:id="@+id/imageView_send_gas_icon"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="Gas"
+                                android:src="@drawable/gas_icon_selector" />
+
+                        </LinearLayout>
 
                         <View
                             android:layout_width="wrap_content"

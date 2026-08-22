@@ -62,6 +62,7 @@ public class GlobalMethods {
     public static volatile String BLOCK_EXPLORER_URL = null;
     public static String BLOCK_EXPLORER_TX_HASH_URL =  "/txn/{txhash}";
     public static String BLOCK_EXPLORER_ACCOUNT_TRANSACTION_URL = "/account/{address}/txn/page";
+    public static String BLOCK_EXPLORER_TOKEN_URL = "/token/{address}";
 
     //Network
     public static volatile String BLOCKCHAIN_NAME = null;
@@ -86,30 +87,8 @@ public class GlobalMethods {
         }
     }
 
-    /**
-     * (Android, mirrors iOS SendViewController gas constants):
-     *
-     * <p>We deliberately do NOT call {@code estimateGas} on the
-     * provider before sending. Why:
-     *
-     * <ul>
-     *   <li>An attacker-controlled RPC endpoint (the user can add
-     *   custom networks) can return inflated estimates and drain
-     *   the wallet via fee inflation. The simple-transfer / ERC-20
-     *   transfer paths used here are bounded enough that pinning
-     *   safe constants is the correct trade-off.</li>
-     *   <li>{@code 21000} is the EVM-defined cost of a coin-only
-     *   transfer with no contract interaction.</li>
-     *   <li>{@code 84000} is the empirically-validated upper bound
-     *   for an ERC-20 {@code transfer(address,uint256)} call on the
-     *   reference SDK.</li>
-     * </ul>
-     *
-     * <p>The Review dialog shows the gas limit so the user
-     * can see what they are agreeing to before signing.
-     */
-    public static String GAS_QCN_LIMIT = "21000";
-    public static String GAS_TOKEN_LIMIT = "84000";
+    // Gas limits now live in com.quantumswap.app.gas.GasKind (desktop
+    // per-kind defaults) and are estimated/overridden per transaction.
 
     // Token list cache populated from the scan API for the currently active wallet.
     // CURRENT_WALLET_TOKEN_LIST_ADDRESS tracks which address the cache belongs to,

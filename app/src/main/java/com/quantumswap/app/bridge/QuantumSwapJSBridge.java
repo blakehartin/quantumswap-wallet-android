@@ -320,9 +320,7 @@ public class QuantumSwapJSBridge {
                     "swapCheckPairExists",
                     "swapGetAmountsOut",
                     "swapGetAmountsIn",
-                    "swapEstimateGas",
                     "swapCheckAllowance",
-                    "swapEstimateApproveGas",
                     "swapSubmitApproval",
                     "swapSubmitSwap",
                     "liquidityListPools",
@@ -332,7 +330,9 @@ public class QuantumSwapJSBridge {
                     "liquiditySubmitApprove",
                     "liquiditySubmitAdd",
                     "liquiditySubmitRemove",
-                    "poolsSubmitCreatePair"));
+                    "poolsSubmitCreatePair",
+                    "tokensSubmitCreate",
+                    "dexEstimateGas"));
 
     /**
      * Stage {@code payload} and invoke the allowlisted DEX bridge

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop #modalGasConfig: "Gas" title, editable gas limit, read-only
+     estimated fee (recomputed live from the opened fee/limit ratio),
+     Cancel / Ok. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/token_picker_dialog_bg">
+
+    <TextView
+        android:id="@+id/textView_gas_config_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:textColor="@color/colorWhite" />
+
+    <TextView
+        android:id="@+id/textView_gas_config_limit_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:textSize="14dp"
+        android:textStyle="bold"
+        android:textColor="@color/colorCommon1" />
+
+    <EditText
+        android:id="@+id/editText_gas_config_limit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:inputType="number"
+        android:maxLength="12"
+        android:textSize="15dp"
+        android:textColor="@color/colorCommon6"
+        android:background="@drawable/text_input_selector" />
+
+    <TextView
+        android:id="@+id/textView_gas_config_fee_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:textSize="14dp"
+        android:textStyle="bold"
+        android:textColor="@color/colorCommon1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/textView_gas_config_fee"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="15dp"
+            android:textColor="@color/colorCommon6" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:textSize="15dp"
+            android:textColor="@color/colorCommon6"
+            android:text="Q" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/button_gas_config_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="70dp"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:textAllCaps="false"
+            android:textColor="@color/colorWhite"
+            android:background="@drawable/button_network_cancel_selector" />
+
+        <Button
+            android:id="@+id/button_gas_config_ok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="15dp"
+            android:minWidth="70dp"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:textAllCaps="false"
+            android:textColor="@color/colorWhite"
+            android:background="@drawable/button_green_selector" />
+
+    </LinearLayout>
+
+</LinearLayout>

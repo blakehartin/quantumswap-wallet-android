@@ -44,6 +44,9 @@ import com.quantumswap.app.keystorage.SecureStorage;
 import com.quantumswap.app.utils.CoinUtils;
 import com.quantumswap.app.utils.GlobalMethods;
 import com.quantumswap.app.utils.PrefConnect;
+import com.quantumswap.app.gas.GasChipController;
+import com.quantumswap.app.gas.GasEstimator;
+import com.quantumswap.app.gas.GasKind;
 import com.quantumswap.app.view.dialog.TransactionReviewDialog;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
@@ -336,10 +339,20 @@ public class SendFragment extends Fragment  {
                 @Override
                 public void afterTextChanged(android.text.Editable s) {
                     scheduleAddressLiveValidation(addressToSendEditText, addressExplorerButton);
+                    scheduleSendGasEstimate();
                 }
             });
             // Initial state: empty field on screen open, explorer hidden.
             addressExplorerButton.setVisibility(View.GONE);
+
+            gasChip = new GasChipController(getActivity(), jsonViewModel, walletAddress,
+                    (ImageView) getView().findViewById(R.id.imageView_send_gas_icon),
+                    (TextView) getView().findViewById(R.id.textView_send_gas_fee), GasKind.SEND_COIN);
+            quantityToSendEditText.addTextChangedListener(new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+                @Override public void afterTextChanged(android.text.Editable s) { scheduleSendGasEstimate(); }
+            });
 
             sendButton.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
@@ -764,14 +777,6 @@ public class SendFragment extends Fragment  {
     }
 
      /**
-     * Builds the asset display string for the transaction-review
-     * dialog. Native QC sends render as "QuantumCoin"; token sends
-     * render as "SYMBOL - Name" so the user has both the short tag
-     * AND the long human name in front of them. The contract address
-     * gets its own dedicated row in the dialog (passed separately to
-     * {@link TransactionReviewDialog#show}); native sends pass null.
-     */
-     /**
      * Normalize a QR-scanned string into a bare hex address.
      * Accepts the EIP-681-style "quantumcoin:" URI prefix as well as
      * bare 0x... hex. The URI form is what other wallets typically
@@ -796,24 +801,11 @@ public class SendFragment extends Fragment  {
         return s.trim();
     }
 
-    private String reviewAssetText() {
-        if (selectedContract == null || selectedContract.isEmpty()) {
-            return "QuantumCoin";
-        }
-        String sym = selectedSymbol == null ? "" : selectedSymbol;
-        String name = "";
-        for (AccountTokenSummary t : tokenOptions) {
-            if (t != null && selectedContract.equalsIgnoreCase(t.getContractAddress())) {
-                name = t.getName() == null ? "" : t.getName();
-                break;
-            }
-        }
-        if (sym.isEmpty() && name.isEmpty()) return "Token";
-        if (sym.isEmpty()) return name;
-        if (name.isEmpty()) return sym;
-        return sym + " - " + name;
-    }
-
+    /** Desktop send review (one dialog): Action "Send Q" / "Send name
+     *  (SYM)", Contract address (token), From, To, Quantity (Q),
+     *  Token quantity, Gas limit, Estimated gas fee, Network, then
+     *  "i agree" + wallet password. The header chip's estimate (or the
+     *  user's override) is the gas that gets signed. */
     private void showTransactionReview(final View view,
                                         final ProgressBar progressBarSendCoins,
                                         final String walletAddress,
@@ -821,33 +813,50 @@ public class SendFragment extends Fragment  {
                                         final String quantity,
                                         final String languageKey) {
         try {
-            int chainId = 0;
-            try {
-                chainId = Integer.parseInt(GlobalMethods.NETWORK_ID == null
-                        ? "0" : GlobalMethods.NETWORK_ID);
-            } catch (NumberFormatException nfe) {
-                chainId = 0;
-            }
-            String asset = reviewAssetText();
-            String contract = (selectedContract == null || selectedContract.isEmpty())
-                    ? null : selectedContract;
-            TransactionReviewDialog.show(getContext(), jsonViewModel,
-                    asset, contract,
-                    walletAddress == null ? "" : walletAddress,
-                    toAddress,
-                    quantity,
-                    GlobalMethods.BLOCKCHAIN_NAME == null ? "" : GlobalMethods.BLOCKCHAIN_NAME,
-                    chainId,
-                    new TransactionReviewDialog.OnConfirm() {
-                        @Override
-                        public void onConfirm() {
-                            // Capture network + wallet at the
-                            // exact moment the user agreed. Re-asserted
-                            // before signing in sendTransaction /
-                            // sendTokenTransaction so a network switch
-                            // (or wallet swap) between Review and Sign
-                            // aborts the broadcast instead of producing
-                            // a wrong-chain signature.
+            if (gasChip == null) throw new IllegalStateException("gas chip not ready");
+            gasChip.setKind(selectedContract == null ? GasKind.SEND_COIN : GasKind.SEND_TOKEN);
+            gasChip.ensureReady(() -> {
+                if (getActivity() == null) return;
+                final GasEstimator.Resolved gas = gasChip.resolve();
+                if (gas.gasLimit <= 0) {
+                    sendButtonStatus = 0;
+                    GlobalMethods.ShowErrorDialog(getContext(),
+                            jsonViewModel.getErrorTitleByLangValues(),
+                            jsonViewModel.lang("tx-step-invalid-gas", "Enter a valid positive gas limit."));
+                    return;
+                }
+                final boolean isCoin = selectedContract == null || selectedContract.isEmpty();
+                String sym = selectedSymbol == null ? "" : selectedSymbol;
+                String name = "";
+                if (!isCoin) {
+                    for (AccountTokenSummary t : tokenOptions) {
+                        if (t != null && selectedContract.equalsIgnoreCase(t.getContractAddress())) {
+                            name = t.getName() == null ? "" : t.getName();
+                            break;
+                        }
+                    }
+                }
+                TransactionReviewDialog.ReviewSpec spec = new TransactionReviewDialog.ReviewSpec()
+                        .action(isCoin
+                                ? jsonViewModel.lang("send", "Send") + " Q"
+                                : jsonViewModel.lang("send", "Send") + " " + name + " (" + sym + ")")
+                        .contractAddress(isCoin ? null : selectedContract)
+                        .contractIsToken(!isCoin)
+                        .fromAddress(walletAddress == null ? "" : walletAddress)
+                        .toAddress(toAddress)
+                        .quantityValue(isCoin ? quantity : "0")
+                        .tokenQuantityValue(isCoin ? null : quantity + " " + sym)
+                        .gas(gas.gasLimit, gas.feeLabel())
+                        .networkText(TransactionReviewDialog.networkText(jsonViewModel));
+                TransactionReviewDialog.showForCredentials(getActivity(), jsonViewModel,
+                        walletAddress == null ? "" : walletAddress, spec,
+                        credentials -> {
+                            // Capture network + wallet at the exact
+                            // moment the user agreed; re-asserted in
+                            // sendTransaction so a network switch
+                            // between Review and Sign aborts the
+                            // broadcast instead of producing a
+                            // wrong-chain signature.
                             try {
                                 pendingNetworkSnapshot =
                                         com.quantumswap.app.networking.NetworkSnapshot
@@ -856,246 +865,48 @@ public class SendFragment extends Fragment  {
                                 pendingNetworkSnapshot = null;
                                 timber.log.Timber.e(t, "NetworkSnapshot.capture failed");
                             }
-                            unlockDialogFragment(view, progressBarSendCoins,
-                                    walletAddress, toAddress, quantity, languageKey);
-                        }
-                    },
-                    new TransactionReviewDialog.OnCancel() {
-                        @Override
-                        public void onCancel() {
+                            sendTransaction(getContext(), progressBarSendCoins, walletAddress,
+                                    toAddress, quantity, credentials, gas.gasLimit);
+                        },
+                        () -> {
                             pendingNetworkSnapshot = null;
                             sendButtonStatus = 0;
-                        }
-                    });
+                        });
+            });
         } catch (Exception e) {
-            // If the review dialog cannot be presented for any reason,
-            // do not silently fall through to the unlock + sign path.
-            // Reset the button and surface the error to the user.
             sendButtonStatus = 0;
             GlobalMethods.ExceptionError(getContext(), TAG, e);
         }
     }
 
-    private void unlockDialogFragment(View view, ProgressBar progressBarSendCoins,
-                                     String walletAddress, String toAddress, String quantity, String languageKey) {
-        try {
-            //Alert unlock dialog
-            AlertDialog dialog = new AlertDialog.Builder(getContext())
-                    .setTitle((CharSequence) "").setView((int)
-                            R.layout.unlock_dialog_fragment).create();
-            dialog.dismiss();
-            dialog.setCancelable(false);
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(
-                        new android.graphics.drawable.ColorDrawable(
-                                android.graphics.Color.TRANSPARENT));
-            }
-            dialog.show();
+    private GasChipController gasChip;
 
-            TextView unlockWalletTextView = (TextView) dialog.findViewById(R.id.textView_unlock_langValues_unlock_wallet);
-            unlockWalletTextView.setText(jsonViewModel.getUnlockWalletByLangValues());
-
-            TextView unlockPasswordTextView = (TextView) dialog.findViewById(R.id.textView_unlock_langValues_enter_wallet_password);
-            unlockPasswordTextView.setText(jsonViewModel.getEnterQuantumWalletPasswordByLangValues());
-
-            EditText passwordEditText = (EditText) dialog.findViewById(R.id.editText_unlock_langValues_enter_a_password);
-            passwordEditText.setHint(jsonViewModel.getEnterApasswordByLangValues());
-            // Per-context autofill identity so a password manager can
-            // disambiguate the strongbox-unlock password from any
-            // per-wallet backup password the user may have stored.
-            com.quantumswap.app.security.CredentialIdentifier.apply(
-                    passwordEditText,
-                    com.quantumswap.app.security.CredentialIdentifier.Context.STRONGBOX_UNLOCK,
-                    null);
-            // Invisible username carrying the strongbox-scoped value
-            // so the autofill provider scopes its suggestion to the
-            // unlock slot rather than guessing per-app. Container is
-            // looked up by stable ID; walking up from the EditText
-            // would land on the TextInputLayout, whose addView(EditText)
-            // override would clobber the input field's LayoutParams.
-            android.view.ViewGroup unlockRoot = (android.view.ViewGroup)
-                    dialog.findViewById(R.id.linear_layout_unlock_content);
-            if (unlockRoot != null) {
-                com.quantumswap.app.security.CredentialIdentifier.attachUsernameField(
-                        unlockRoot,
-                        com.quantumswap.app.security.CredentialIdentifier
-                                .strongboxUsername(getContext()));
-            }
-            GlobalMethods.focusAndShowKeyboard(passwordEditText, dialog);
-
-            Button unlockButton = (Button) dialog.findViewById(R.id.button_unlock_langValues_unlock);
-            unlockButton.setText(jsonViewModel.getUnlockByLangValues());
-
-            Button closeButton = (Button) dialog.findViewById(R.id.button_unlock_langValues_close);
-            closeButton.setText(jsonViewModel.getCloseByLangValues());
-            // Send unlock is NON-mandatory. The user
-            // already saw the transaction-review dialog and confirmed
-            // the action; the unlock prompt is the password gate. If
-            // they decide to abort here we should let them — money
-            // is not yet broadcast. The wrapper centralises the
-            // close-button + back-key semantics.
-            com.quantumswap.app.view.dialog.UnlockDialogs.applyMandatory(dialog, false);
-
-            unlockButton.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    final String password = passwordEditText.getText().toString();
-                    if (password == null || password.isEmpty()) {
-                        messageDialogFragment(languageKey, jsonViewModel.getEnterApasswordByLangValues());
-                        return;
-                    }
-                    unlockButton.setEnabled(false);
-                    closeButton.setEnabled(false);
-                    passwordEditText.setEnabled(false);
-
-                    // (Android) Send-flow wait dialog. We use the
-                    // showMessage(...) variant that returns a
-                    // MessageHandle so the same overlay can stay up
-                    // across the unlock-then-submit handoff: after a
-                    // successful unlock we swap the label from
-                    // "decrypting wallet..." to "submitting
-                    // transaction..." and pass the handle into
-                    // sendTransaction(...) so it can be dismissed in
-                    // the BridgeCallback (success / failure) branches.
-                    // Previously the dialog was dismissed here and the
-                    // sign+broadcast phase ran with no modal, which
-                    // could look like the app had stopped responding.
-                    final com.quantumswap.app.view.dialog.WaitDialog.MessageHandle waitHandle =
-                            com.quantumswap.app.view.dialog.WaitDialog.showMessage(
-                                    getContext(), jsonViewModel.getWaitUnlockByLangValues());
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            boolean ok = false;
-                            String lockoutMessage = null;
-                            try {
-                                // Brute-force gate. Same channel as
-                                // strongbox-unlock so a burglar with
-                                // both the device and a stash of guesses
-                                // can't double their attempts by
-                                // alternating Send and Settings.
-                                com.quantumswap.app.security.UnlockAttemptLimiter.Decision lim =
-                                        com.quantumswap.app.security.UnlockAttemptLimiter
-                                                .currentDecision(getContext());
-                                if (lim.kind == com.quantumswap.app.security.UnlockAttemptLimiter.DecisionKind.LOCKED) {
-                                    lockoutMessage = com.quantumswap.app.security
-                                            .UnlockAttemptLimiter.userFacingLockoutMessage(lim.remainingSeconds, jsonViewModel);
-                                } else {
-                                    SecureStorage secureStorage = KeyViewModel.getSecureStorage();
-                                    // (Android, mirrors iOS verify-only path):
-                                    // when the strongbox is ALREADY unlocked the
-                                    // user is being asked for the password as a
-                                    // second factor for this Send. Doing a full
-                                    // unlock again is wasted scrypt work AND
-                                    // perturbs unlock state; the cheaper, semantic
-                                    // operation is UnlockCoordinator.verifyPassword
-                                    // which header-checks without re-deriving the
-                                    // session keys. We branch on the live unlock
-                                    // state so we get the right primitive in both
-                                    // cases (locked -> unlock, already-unlocked ->
-                                    // verifyPassword).
-                                    if (secureStorage.isUnlocked()) {
-                                        com.quantumswap.app.keystorage.UnlockCoordinator uc =
-                                                secureStorage.getCoordinator();
-                                        ok = uc != null
-                                                && uc.verifyPassword(getContext(), password.trim());
-                                    } else {
-                                        ok = secureStorage.unlock(getContext(), password.trim());
-                                    }
-                                    if (ok) {
-                                        com.quantumswap.app.security.UnlockAttemptLimiter
-                                                .recordSuccess(getContext(),
-                                                        com.quantumswap.app.security
-                                                                .UnlockAttemptLimiter.Channel.STRONGBOX_UNLOCK);
-                                    } else {
-                                        com.quantumswap.app.security.UnlockAttemptLimiter
-                                                .recordFailure(getContext(),
-                                                        com.quantumswap.app.security
-                                                                .UnlockAttemptLimiter.Channel.STRONGBOX_UNLOCK);
-                                    }
-                                }
-                            } catch (Exception e) {
-                                // Route through Timber so ReleaseTree
-                                // strips the stack trace in release builds.
-                                timber.log.Timber.e(e, "send flow unlock failed");
-                            }
-                            final boolean unlocked = ok;
-                            final String lockoutMessageFinal = lockoutMessage;
-                            if (getActivity() == null) return;
-                            getActivity().runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (!unlocked) {
-                                        // Failure path: dismiss the wait
-                                        // overlay and leave the password
-                                        // dialog open so the user can
-                                        // retry with a corrected typo.
-                                        try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
-                                        unlockButton.setEnabled(true);
-                                        closeButton.setEnabled(true);
-                                        passwordEditText.setEnabled(true);
-                                        // R.5: do NOT clear password
-                                        // EditText on failure so the user
-                                        // can fix a one-character typo
-                                        // without retyping the whole
-                                        // string. Mirrors iOS Send flow.
-                                        passwordEditText.requestFocus();
-                                        android.content.Context ctx = getContext();
-                                        if (ctx != null) {
-                                            String errorMessage = lockoutMessageFinal != null
-                                                    ? lockoutMessageFinal
-                                                    : jsonViewModel.getWalletPasswordMismatchByErrors();
-                                            GlobalMethods.ShowErrorDialog(ctx,
-                                                    jsonViewModel.getErrorTitleByLangValues(),
-                                                    errorMessage);
-                                        }
-                                        return;
-                                    }
-                                    if (sendButtonStatus == 1) {
-                                        // Success path: keep the wait
-                                        // overlay up, swap its label to
-                                        // "submitting transaction" so
-                                        // the user sees the wait phase
-                                        // shift, then dismiss the
-                                        // password dialog and let
-                                        // sendTransaction(...) take
-                                        // ownership of the handle (it
-                                        // dismisses on result / error).
-                                        try {
-                                            if (waitHandle != null) {
-                                                waitHandle.setMessage(
-                                                        jsonViewModel.getSubmittingTransactionByLangValues());
-                                            }
-                                        } catch (Throwable ignore) { }
-                                        dialog.dismiss();
-                                        sendTransaction(getContext(), progressBarSendCoins,
-                                                walletAddress, toAddress, quantity, languageKey,
-                                                waitHandle);
-                                    } else {
-                                        // sendButtonStatus != 1 means
-                                        // the user navigated away or
-                                        // cancelled between unlock and
-                                        // submit; drop the overlay so
-                                        // we don't leak it.
-                                        try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
-                                    }
-                                    sendButtonStatus = 2;
-                                }
-                            });
-                        }
-                    }).start();
+    /** Desktop scheduleSendGasEstimate: 2 s debounce after any edit of
+     *  address / amount / asset; nothing is requested until the form
+     *  is complete enough (valid-looking address + positive amount). */
+    private void scheduleSendGasEstimate() {
+        if (gasChip == null || getView() == null) return;
+        final EditText addr = getView().findViewById(R.id.editText_send_address_to_send);
+        final EditText qty = getView().findViewById(R.id.editText_send_quantity_to_send);
+        gasChip.setKind(selectedContract == null ? GasKind.SEND_COIN : GasKind.SEND_TOKEN);
+        gasChip.schedule(() -> {
+            String to = addr == null || addr.getText() == null ? "" : addr.getText().toString().trim();
+            String amount = qty == null || qty.getText() == null ? "" : qty.getText().toString().trim();
+            if (!com.quantumswap.app.networking.UrlBuilder.isValidAddress(to)) return null;
+            if (validateAmount(amount) != null) return null;
+            try {
+                JSONObject p = new JSONObject();
+                p.put("toAddress", to);
+                p.put("amount", amount);
+                if (selectedContract != null) {
+                    p.put("contractAddress", selectedContract);
+                    p.put("fromDecimals", selectedDecimals);
                 }
-            });
-
-            closeButton.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    dialog.dismiss();
-                    sendButtonStatus = 0;
-                }
-            });
-
-        } catch (Exception e) {
-            GlobalMethods.ExceptionError(getContext(), TAG, e);
-        }
+                return p;
+            } catch (Exception e) {
+                return null;
+            }
+        });
     }
 
     /**
@@ -1198,23 +1009,25 @@ public class SendFragment extends Fragment  {
     }
 
     /**
-     * Signs and broadcasts the transaction. The {@code waitHandle} parameter is
-     * the modal wait overlay started in {@link #unlockDialogFragment} for the
-     * unlock phase and re-labelled to "submitting transaction" before this
-     * method is invoked; ownership transfers here, and we are responsible for
-     * dismissing it in every terminal branch (success, JSON-parse error,
-     * onError, outer try-catch, and the early "in-flight" guard). Pass
-     * {@code null} only from call sites that already manage their own modal.
+     * Signs and broadcasts the transaction with the credentials the
+     * review dialog just verified and the gas limit the user agreed
+     * to. Shows the "submitting transaction" wait overlay itself and
+     * dismisses it in every terminal branch.
      */
     private void sendTransaction(Context context, ProgressBar progressBar,
-                                 String fromAddress, String toAddress, String quantity, String languageKey,
-                                 final com.quantumswap.app.view.dialog.WaitDialog.MessageHandle waitHandle) {
+                                 String fromAddress, String toAddress, String quantity,
+                                 final com.quantumswap.app.security.WalletUnlock.Credentials credentials,
+                                 final long gasLimitValue) {
+        com.quantumswap.app.view.dialog.WaitDialog.MessageHandle waitHandle = null;
         try {
             if (progressBar.getVisibility() == View.VISIBLE) {
                 String message = getResources().getString(R.string.send_transaction_message_exits);
                 GlobalMethods.ShowToast(getContext(), message);
-                try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
                 return;
+            }
+            if (gasLimitValue <= 0) {
+                throw new Exception(jsonViewModel.lang("tx-step-invalid-gas",
+                        "Enter a valid positive gas limit."));
             }
 
             // Re-assert the network + wallet snapshot taken at
@@ -1223,19 +1036,15 @@ public class SendFragment extends Fragment  {
             assertReviewNetworkStillCurrent(fromAddress);
 
             progressBar.setVisibility(View.VISIBLE);
-            SecureStorage secureStorage = KeyViewModel.getSecureStorage();
-            String indexStr = PrefConnect.WALLET_ADDRESS_TO_INDEX_MAP.get(fromAddress);
-            if (indexStr == null) {
-                throw new Exception("Wallet not found for address");
-            }
-            String walletJsonStr = secureStorage.loadWallet(context, Integer.parseInt(indexStr));
-            JSONObject walletData = new JSONObject(walletJsonStr);
-            String privKeyBase64 = walletData.getString("privateKey");
-            String pubKeyBase64 = walletData.getString("publicKey");
+            waitHandle = com.quantumswap.app.view.dialog.WaitDialog.showMessage(
+                    getContext(), jsonViewModel.getSubmittingTransactionByLangValues());
+            final com.quantumswap.app.view.dialog.WaitDialog.MessageHandle waitHandleFinal = waitHandle;
+            String privKeyBase64 = credentials.privateKeyBase64;
+            String pubKeyBase64 = credentials.publicKeyBase64;
 
             String rpcEndpoint = GlobalMethods.RPC_ENDPOINT_URL;
             int chainId = Integer.parseInt(GlobalMethods.NETWORK_ID);
-            boolean advancedSigningEnabled = PrefConnect.readBoolean(context, PrefConnect.ADVANCED_SIGNING_ENABLED_KEY, false);
+            boolean advancedSigningEnabled = credentials.advancedSigning;
 
             BridgeCallback callback = new BridgeCallback() {
                 @Override
@@ -1255,7 +1064,7 @@ public class SendFragment extends Fragment  {
                                 // surfacing the completion dialog so
                                 // the spinner doesn't briefly stack
                                 // on top of the success card.
-                                try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
+                                try { if (waitHandleFinal != null) waitHandleFinal.dismiss(); } catch (Throwable ignore) { }
                                 // Pass the locally-derived
                                 // tx hash through to the completion
                                 // dialog so the user gets a copy +
@@ -1263,7 +1072,7 @@ public class SendFragment extends Fragment  {
                                 // plus the live confirmation poll.
                                 sendCompletedDialogFragment(context, fromAddress, txHash);
                             } catch (Exception e) {
-                                try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
+                                try { if (waitHandleFinal != null) waitHandleFinal.dismiss(); } catch (Throwable ignore) { }
                                 progressBar.setVisibility(View.GONE);
                                 sendButtonStatus = 0;
                                 String errorTitle = jsonViewModel.getErrorTitleByLangValues();
@@ -1280,7 +1089,7 @@ public class SendFragment extends Fragment  {
                     if (getActivity() == null) return;
                     getActivity().runOnUiThread(new Runnable() {
                         public void run() {
-                            try { if (waitHandle != null) waitHandle.dismiss(); } catch (Throwable ignore) { }
+                            try { if (waitHandleFinal != null) waitHandleFinal.dismiss(); } catch (Throwable ignore) { }
                             progressBar.setVisibility(View.GONE);
                             sendButtonStatus = 0;
                             String errorTitle = jsonViewModel.getErrorTitleByLangValues();
@@ -1294,12 +1103,12 @@ public class SendFragment extends Fragment  {
 
             if (selectedContract == null) {
                 String valueWei = CoinUtils.parseEther(quantity);
-                String gasLimit = GlobalMethods.GAS_QCN_LIMIT;
+                String gasLimit = String.valueOf(gasLimitValue);
                 keyViewModel.sendTransaction(privKeyBase64, pubKeyBase64, toAddress, valueWei,
                         gasLimit, rpcEndpoint, chainId, advancedSigningEnabled, callback);
             } else {
                 String amountWei = CoinUtils.parseUnits(quantity, selectedDecimals);
-                String gasLimit = GlobalMethods.GAS_TOKEN_LIMIT;
+                String gasLimit = String.valueOf(gasLimitValue);
                 keyViewModel.sendTokenTransaction(privKeyBase64, pubKeyBase64, selectedContract,
                         toAddress, amountWei, gasLimit, rpcEndpoint, chainId,
                         advancedSigningEnabled, callback);
@@ -1396,6 +1205,7 @@ public class SendFragment extends Fragment  {
                     // also benefits from a toast on a 5xx since the user
                     // is actively using the screen.
                     getBalanceByAccount(walletAddress, balanceValueTextView, balanceProgress, true);
+                    scheduleSendGasEstimate();
                     return;
                 }
                 int tokenIndex = position - 1;
@@ -1411,6 +1221,7 @@ public class SendFragment extends Fragment  {
                 balanceValueTextView.setText(
                         CoinUtils.formatUnits(safe(selectedTokenBalanceWei), selectedDecimals));
                 balanceProgress.setVisibility(View.GONE);
+                scheduleSendGasEstimate();
             }
 
             @Override
@@ -1534,58 +1345,52 @@ public class SendFragment extends Fragment  {
 
             // Desktop polls every 9000ms plus one immediate check, with
             // no attempt cap - the user can close the dialog any time.
-            final Runnable[] pollRef = new Runnable[1];
-            pollRef[0] = new Runnable() {
-                @Override public void run() {
-                    if (settled[0] || getActivity() == null) return;
-                    pollSendTxStatus(fromAddress, txHash, new SendStatusCallback() {
-                        @Override public void onStatus(String status, String error) {
-                            if (settled[0]) return;
-                            if ("succeeded".equals(status)) {
-                                settled[0] = true;
-                                statusHandler.removeCallbacksAndMessages(null);
-                                if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
-                                if (statusIcon != null) {
-                                    statusIcon.setImageResource(R.drawable.ic_status_success);
-                                    statusIcon.setVisibility(View.VISIBLE);
-                                }
-                                if (statusText != null) {
-                                    statusText.setText(jsonViewModel.lang(
-                                            "send-transaction-succeeded",
-                                            "Transaction completed successfully."));
-                                }
-                                if (bigCheck != null) bigCheck.setVisibility(View.VISIBLE);
-                            } else if ("failed".equals(status)) {
-                                settled[0] = true;
-                                statusHandler.removeCallbacksAndMessages(null);
-                                if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
-                                if (statusIcon != null) {
-                                    statusIcon.setImageResource(R.drawable.ic_status_failed);
-                                    statusIcon.setVisibility(View.VISIBLE);
-                                }
-                                if (statusText != null) {
-                                    String failed = jsonViewModel.lang(
-                                            "send-transaction-failed", "Transaction failed.");
-                                    if (error != null && !error.isEmpty()) {
-                                        failed += " " + sanitizeErrorMessage(error);
-                                    }
-                                    statusText.setText(failed);
-                                }
-                            } else {
-                                // pending / unknown: keep polling.
-                                statusHandler.postDelayed(pollRef[0], 9000);
-                            }
-                        }
-                    });
-                }
-            };
-
             statusHandler.postDelayed(rotateRunnable, 3600);
-            pollRef[0].run();
+            final com.quantumswap.app.networking.TxStatusPoller poller =
+                    com.quantumswap.app.networking.TxStatusPoller.start(
+                            getContext(), fromAddress, txHash, 9000, 0, false,
+                            new com.quantumswap.app.networking.TxStatusPoller.Listener() {
+                @Override public void onSucceeded() {
+                    if (settled[0]) return;
+                    settled[0] = true;
+                    statusHandler.removeCallbacksAndMessages(null);
+                    if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
+                    if (statusIcon != null) {
+                        statusIcon.setImageResource(R.drawable.ic_status_success);
+                        statusIcon.setVisibility(View.VISIBLE);
+                    }
+                    if (statusText != null) {
+                        statusText.setText(jsonViewModel.lang(
+                                "send-transaction-succeeded",
+                                "Transaction completed successfully."));
+                    }
+                    if (bigCheck != null) bigCheck.setVisibility(View.VISIBLE);
+                }
+                @Override public void onFailed(String error) {
+                    if (settled[0]) return;
+                    settled[0] = true;
+                    statusHandler.removeCallbacksAndMessages(null);
+                    if (statusSpinner != null) statusSpinner.setVisibility(View.GONE);
+                    if (statusIcon != null) {
+                        statusIcon.setImageResource(R.drawable.ic_status_failed);
+                        statusIcon.setVisibility(View.VISIBLE);
+                    }
+                    if (statusText != null) {
+                        String failed = jsonViewModel.lang(
+                                "send-transaction-failed", "Transaction failed.");
+                        if (error != null && !error.isEmpty()) {
+                            failed += " " + sanitizeErrorMessage(error);
+                        }
+                        statusText.setText(failed);
+                    }
+                }
+                @Override public void onTimeout() { }
+            });
             dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
                 @Override public void onDismiss(android.content.DialogInterface d) {
                     settled[0] = true;
                     statusHandler.removeCallbacksAndMessages(null);
+                    poller.cancel();
                 }
             });
 
@@ -1669,86 +1474,6 @@ public class SendFragment extends Fragment  {
             GlobalMethods.ExceptionError(getContext(), TAG, e);
         }
     }
-
-    private interface SendStatusCallback {
-        void onStatus(String status, String error);
-    }
-
-    /** Desktop lib/api.ts getTransactionStatusByHash: page 0 of the
-     *  PENDING list first (hash there => still pending), then page 0
-     *  of the COMPLETED list (hash there => succeeded/failed by the
-     *  item's status field), otherwise unknown. API errors report
-     *  unknown so the caller keeps polling. */
-    private void pollSendTxStatus(final String address, final String txHash,
-                                  final SendStatusCallback cb) {
-        try {
-            new com.quantumswap.app.asynctask.read.AccountPendingTxnRestTask(getContext(),
-                    new com.quantumswap.app.asynctask.read.AccountPendingTxnRestTask.TaskListener() {
-                        @Override public void onFinished(
-                                com.quantumswap.app.api.read.model.AccountPendingTransactionSummaryResponse rsp) {
-                            if (rsp != null && rsp.getResult() != null) {
-                                for (com.quantumswap.app.api.read.model.AccountPendingTransactionSummary t
-                                        : rsp.getResult()) {
-                                    if (t != null && txHash.equalsIgnoreCase(t.getHash())) {
-                                        cb.onStatus("pending", null);
-                                        return;
-                                    }
-                                }
-                            }
-                            checkCompletedTxStatus(address, txHash, cb);
-                        }
-                        @Override public void onFailure(
-                                com.quantumswap.app.api.read.ApiException e) {
-                            cb.onStatus("unknown", null);
-                        }
-                    }).execute(address, "0");
-        } catch (Exception e) {
-            cb.onStatus("unknown", null);
-        }
-    }
-
-    private void checkCompletedTxStatus(String address, final String txHash,
-                                        final SendStatusCallback cb) {
-        try {
-            new com.quantumswap.app.asynctask.read.AccountTxnRestTask(getContext(),
-                    new com.quantumswap.app.asynctask.read.AccountTxnRestTask.TaskListener() {
-                        @Override public void onFinished(
-                                com.quantumswap.app.api.read.model.AccountTransactionSummaryResponse rsp) {
-                            if (rsp != null && rsp.getResult() != null) {
-                                for (com.quantumswap.app.api.read.model.AccountTransactionSummary t
-                                        : rsp.getResult()) {
-                                    if (t != null && txHash.equalsIgnoreCase(t.getHash())) {
-                                        cb.onStatus(isTxStatusSuccess(t.getStatus())
-                                                ? "succeeded" : "failed", null);
-                                        return;
-                                    }
-                                }
-                            }
-                            cb.onStatus("unknown", null);
-                        }
-                        @Override public void onFailure(
-                                com.quantumswap.app.api.read.ApiException e) {
-                            cb.onStatus("unknown", null);
-                        }
-                    }).execute(address, "0");
-        } catch (Exception e) {
-            cb.onStatus("unknown", null);
-        }
-    }
-
-    /** Desktop maps the raw txn.status == "0x1" to success; the
-     *  generated model surfaces status as an untyped Object, so accept
-     *  the boolean/number/string spellings of "1". */
-    private static boolean isTxStatusSuccess(Object status) {
-        if (status instanceof Boolean) return (Boolean) status;
-        if (status instanceof Number) return ((Number) status).intValue() == 1;
-        if (status != null) {
-            String s = String.valueOf(status).trim().toLowerCase(java.util.Locale.ROOT);
-            return s.equals("0x1") || s.equals("1") || s.equals("true");
-        }
-        return false;
-    }
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,

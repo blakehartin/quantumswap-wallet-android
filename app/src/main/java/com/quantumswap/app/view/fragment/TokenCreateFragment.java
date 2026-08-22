@@ -17,14 +17,15 @@ import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 
 import com.quantumswap.app.R;
 import com.quantumswap.app.bridge.BridgeCallback;
 import com.quantumswap.app.tokens.StablecoinImpersonatorFilter;
 import com.quantumswap.app.utils.DexPayloads;
-import com.quantumswap.app.view.dialog.DexUnlockPrompt;
+import com.quantumswap.app.gas.GasChipController;
+import com.quantumswap.app.gas.GasKind;
+import com.quantumswap.app.view.dialog.TransactionReviewDialog;
 import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
@@ -44,7 +45,6 @@ import java.math.BigDecimal;
  */
 public class TokenCreateFragment extends Fragment {
 
-    private static final long DEPLOY_TOKEN_DEFAULT_GAS = 6000000L;
 
     private OnTokenCreateCompleteListener mListener;
 
@@ -59,7 +59,6 @@ public class TokenCreateFragment extends Fragment {
     private Button createButton;
     private ProgressBar progress;
 
-    private String[] sessionKeys;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public static TokenCreateFragment newInstance() {
@@ -112,6 +111,17 @@ public class TokenCreateFragment extends Fragment {
 
         backArrow.setOnClickListener(v -> mListener.onTokenCreateCompleteByBackArrow());
         createButton.setOnClickListener(v -> onCreateClick());
+
+        gasChip = new GasChipController(getActivity(), jsonViewModel, walletAddress,
+                view.findViewById(R.id.imageView_token_create_gas_icon),
+                view.findViewById(R.id.textView_token_create_gas_fee), GasKind.DEPLOY_TOKEN);
+        nameEditText.addTextChangedListener(gasWatcher());
+        symbolEditText.addTextChangedListener(gasWatcher());
+        supplyEditText.addTextChangedListener(gasWatcher());
+        decimalsSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) { scheduleGasEstimate(); }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
     }
 
     // ---------------------------------------------------------------
@@ -185,168 +195,169 @@ public class TokenCreateFragment extends Fragment {
                                  final int decimals, final String supply) {
         String stepLabel = jsonViewModel.lang("step-deploy-token", "Deploy token")
                 + " " + symbol;
+        TransactionReviewDialog.ReviewSpec base = new TransactionReviewDialog.ReviewSpec()
+                .action(jsonViewModel.lang("create-token", "Create Token")
+                        + " " + name + " (" + symbol + ")")
+                .fromAddress(walletAddress)
+                .quantityLabelKey("token-total-supply")
+                .quantityValue(supply + " " + symbol)
+                .networkText(TransactionReviewDialog.networkText(jsonViewModel));
         java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
-        steps.add(new TxStepsDialog.Step(stepLabel,
-                cb -> runDeployStep(name, symbol, decimals, supply, cb)));
-        sessionKeys = null;
+        steps.add(new TxStepsDialog.Step(stepLabel, GasKind.DEPLOY_TOKEN, true,
+                () -> deployPayload(name, symbol, decimals, supply),
+                null,
+                (gasLimit, credentials, chain, cb) -> {
+                    try {
+                        JSONObject payload = DexPayloads.withKeys(getContext(),
+                                credentials.privateKeyBase64, credentials.publicKeyBase64);
+                        TxStepsDialog.overlay(payload, chain);
+                        payload.put("name", name);
+                        payload.put("symbol", symbol);
+                        payload.put("decimals", decimals);
+                        payload.put("totalSupply", supply);
+                        payload.put("gasLimit", gasLimit);
+                        KeyViewModel.getBridge().dexCallAsync("tokensSubmitCreate", payload,
+                                new BridgeCallback() {
+                                    @Override public void onResult(final String jsonResult) {
+                                        mainHandler.post(() -> {
+                                            try {
+                                                JSONObject data = new JSONObject(jsonResult)
+                                                        .getJSONObject("data");
+                                                String hash = data.optString("txHash", "");
+                                                if (hash.isEmpty()) {
+                                                    throw new IllegalStateException(
+                                                            "No transaction hash returned");
+                                                }
+                                                deployedContractAddress =
+                                                        data.optString("contractAddress", "");
+                                                cb.submitted(hash);
+                                            } catch (Exception e) {
+                                                cb.fail(e.getMessage());
+                                            }
+                                        });
+                                    }
+                                    @Override public void onError(final String error) {
+                                        mainHandler.post(() -> cb.fail(error));
+                                    }
+                                });
+                    } catch (Exception e) {
+                        cb.fail(e.getMessage());
+                    }
+                }));
         deployedContractAddress = null;
-        new TxStepsDialog(getContext(),
+        stepsDialog = new TxStepsDialog(getActivity(), jsonViewModel, walletAddress,
                 jsonViewModel.lang("create-token-status", "Create Token Status"),
-                jsonViewModel.lang("transaction-id", "Transaction ID"),
-                jsonViewModel.getOkByLangValues(),
-                steps,
+                base, steps,
+                this::buildContractAddressBlock,
                 () -> {
-                    sessionKeys = null;
-                    showContractAddressDialog();
-                    resetForm();
-                }).show();
+                    stepsDialog = null;
+                    if (getView() != null) resetForm();
+                });
+        stepsDialog.show();
     }
 
     private String deployedContractAddress;
+    private TxStepsDialog stepsDialog;
+    private GasChipController gasChip;
 
-    private void runDeployStep(final String name, final String symbol, final int decimals,
-                               final String supply, final TxStepsDialog.StepCallbacks cb) {
-        // Desktop review copy: "Create Token <name> (<symbol>)" with the
-        // Total Supply row; the shared unlock prompt is the password gate.
-        String message = jsonViewModel.lang("create-token", "Create Token")
-                + " " + name + " (" + symbol + ")\n\n"
-                + jsonViewModel.lang("token-total-supply", "Total Supply")
-                + ": " + supply + " " + symbol;
-        new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("create-token", "Create Token"))
-                .setMessage(message)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(), (d, w) ->
-                        withSessionKeys(() -> estimateAndDeploy(name, symbol, decimals, supply, cb), cb))
-                .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> {
-                    d.dismiss();
-                    cb.cancelled();
-                })
-                .setCancelable(false)
-                .show();
+    private JSONObject deployPayload(String name, String symbol, int decimals, String supply)
+            throws Exception {
+        JSONObject p = new JSONObject();
+        p.put("name", name);
+        p.put("symbol", symbol);
+        p.put("decimals", decimals);
+        p.put("totalSupply", supply);
+        return p;
     }
 
-    private void withSessionKeys(final Runnable onReady,
-                                 final TxStepsDialog.StepCallbacks cb) {
-        if (sessionKeys != null) {
-            onReady.run();
-            return;
-        }
-        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
-            final Context appCtx = getActivity().getApplicationContext();
-            new Thread(() -> {
-                try {
-                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                    mainHandler.post(() -> {
-                        sessionKeys = keys;
-                        onReady.run();
-                    });
-                } catch (Exception e) {
-                    mainHandler.post(() -> cb.fail(e.getMessage()));
-                }
-            }).start();
-        }, cb::cancelled);
-    }
-
-    private void estimateAndDeploy(final String name, final String symbol, final int decimals,
-                                   final String supply, final TxStepsDialog.StepCallbacks cb) {
-        try {
-            cb.status(jsonViewModel.lang("pleaseWaitEstimatingGas",
-                    "Please wait, estimating gas..."));
-            JSONObject estimate = DexPayloads.base();
-            estimate.put("name", name);
-            estimate.put("symbol", symbol);
-            estimate.put("decimals", decimals);
-            estimate.put("totalSupply", supply);
-            estimate.put("fromAddress", walletAddress);
-            KeyViewModel.getBridge().dexCallAsync("tokensEstimateDeployGas", estimate,
-                    new BridgeCallback() {
-                        @Override public void onResult(String jsonResult) {
-                            long gasLimit = DEPLOY_TOKEN_DEFAULT_GAS;
-                            try {
-                                JSONObject result = new JSONObject(jsonResult);
-                                long v = Long.parseLong(result.getJSONObject("data")
-                                        .getString("gasLimit"));
-                                // Desktop pads estimates the same way.
-                                gasLimit = Math.max((v * 12) / 10, 100000L);
-                            } catch (Exception ignore) { }
-                            submitDeploy(name, symbol, decimals, supply, gasLimit, cb);
-                        }
-                        @Override public void onError(String error) {
-                            submitDeploy(name, symbol, decimals, supply,
-                                    DEPLOY_TOKEN_DEFAULT_GAS, cb);
-                        }
-                    });
-        } catch (Exception e) {
-            cb.fail(e.getMessage());
-        }
-    }
-
-    private void submitDeploy(final String name, final String symbol, final int decimals,
-                              final String supply, final long gasLimit,
-                              final TxStepsDialog.StepCallbacks cb) {
-        mainHandler.post(() -> {
-            if (getActivity() == null) return;
-            try {
-                cb.status(jsonViewModel.lang("create-token-progress", "Creating token."));
-                JSONObject payload = DexPayloads.withKeys(getContext(),
-                        sessionKeys[0], sessionKeys[1]);
-                payload.put("name", name);
-                payload.put("symbol", symbol);
-                payload.put("decimals", decimals);
-                payload.put("totalSupply", supply);
-                payload.put("gasLimit", gasLimit);
-                KeyViewModel.getBridge().dexCallAsync("tokensSubmitCreate", payload,
-                        new BridgeCallback() {
-                            @Override public void onResult(final String jsonResult) {
-                                mainHandler.post(() -> {
-                                    if (getActivity() == null) return;
-                                    try {
-                                        JSONObject result = new JSONObject(jsonResult);
-                                        JSONObject data = result.getJSONObject("data");
-                                        deployedContractAddress =
-                                                data.optString("contractAddress", "");
-                                        cb.txHash(data.optString("txHash", ""));
-                                        cb.done();
-                                    } catch (Exception e) {
-                                        cb.fail(e.getMessage());
-                                    }
-                                });
-                            }
-                            @Override public void onError(final String error) {
-                                mainHandler.post(() -> {
-                                    if (getActivity() == null) return;
-                                    cb.fail(error);
-                                });
-                            }
-                        });
-            } catch (Exception e) {
-                cb.fail(e.getMessage());
+    /** Desktop scheduleCreateTokenGasEstimate: 2 s debounce on every
+     *  input edit; nothing is requested until the form validates. */
+    private void scheduleGasEstimate() {
+        if (gasChip == null) return;
+        gasChip.schedule(() -> {
+            String name = text(nameEditText);
+            String symbol = text(symbolEditText);
+            String supply = text(supplyEditText);
+            int decimals = decimalsSpinner.getSelectedItemPosition() + 1;
+            if (name.isEmpty() || symbol.isEmpty() || !isValidSupply(supply, decimals)
+                    || containsUnsafeText(name) || containsUnsafeText(symbol)) {
+                return null;
             }
+            try { return deployPayload(name, symbol, decimals, supply); } catch (Exception e) { return null; }
         });
     }
 
-    /** Desktop onAllDone panel: "Token contract address" + the full
+    private android.text.TextWatcher gasWatcher() {
+        return new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) { scheduleGasEstimate(); }
+        };
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (stepsDialog != null) { stepsDialog.dismiss(); stepsDialog = null; }
+        super.onDestroyView();
+    }
+
+    /** Desktop onAllDone panel inside the steps dialog: bold "Token
+     *  contract address" + copy / block-explorer buttons + the full
      *  address (monospace, selectable). */
-    private void showContractAddressDialog() {
-        if (deployedContractAddress == null || deployedContractAddress.isEmpty()
-                || getContext() == null) {
-            return;
-        }
+    private View buildContractAddressBlock(LayoutInflater inflater) {
+        final String addr = deployedContractAddress;
+        if (addr == null || addr.isEmpty() || getContext() == null) return null;
+        android.widget.LinearLayout wrap = new android.widget.LinearLayout(getContext());
+        wrap.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.LinearLayout header = new android.widget.LinearLayout(getContext());
+        header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView label = new TextView(getContext());
+        label.setText(jsonViewModel.lang("token-contract-address", "Token contract address"));
+        label.setTextColor(0xFFFFFFFF);
+        label.setTextSize(13);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(label, new android.widget.LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        int size = (int) (36 * getResources().getDisplayMetrics().density);
+        int pad = (int) (6 * getResources().getDisplayMetrics().density);
+        android.widget.ImageButton copy = new android.widget.ImageButton(getContext());
+        copy.setImageResource(R.drawable.copy_outline);
+        copy.setBackgroundResource(R.drawable.image_selector);
+        copy.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        copy.setPadding(pad, pad, pad, pad);
+        copy.setImageTintList(android.content.res.ColorStateList.valueOf(
+                getResources().getColor(R.color.colorCommon6)));
+        copy.setOnClickListener(v -> com.quantumswap.app.utils.SecureClipboard
+                .copyAddress(getContext(), "contractAddress", addr));
+        header.addView(copy, new android.widget.LinearLayout.LayoutParams(size, size));
+        android.widget.ImageButton scan = new android.widget.ImageButton(getContext());
+        scan.setImageResource(R.drawable.address_explore);
+        scan.setBackgroundResource(R.drawable.image_selector);
+        scan.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        scan.setPadding(pad, pad, pad, pad);
+        scan.setImageTintList(android.content.res.ColorStateList.valueOf(
+                getResources().getColor(R.color.colorCommon6)));
+        scan.setOnClickListener(v -> {
+            android.net.Uri u = com.quantumswap.app.networking.UrlBuilder.blockExplorerTokenUrl(addr);
+            if (u == null) return;
+            try {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, u));
+            } catch (Throwable ignore) { }
+        });
+        android.widget.LinearLayout.LayoutParams slp =
+                new android.widget.LinearLayout.LayoutParams(size, size);
+        slp.setMarginStart(pad);
+        header.addView(scan, slp);
+        wrap.addView(header);
         TextView content = new TextView(getContext());
-        content.setText(deployedContractAddress);
+        content.setText(addr);
         content.setTextIsSelectable(true);
         content.setTypeface(android.graphics.Typeface.MONOSPACE);
-        content.setTextSize(13);
-        content.setTextColor(0xFFE0E0E6);
-        int pad = (int) (20 * getResources().getDisplayMetrics().density);
-        content.setPadding(pad, pad / 2, pad, 0);
-        AlertDialog dialog = new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("token-contract-address",
-                        "Token contract address"))
-                .setView(content)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(), (d, w) -> d.dismiss())
-                .create();
-        dialog.show();
+        content.setTextSize(11);
+        content.setTextColor(getResources().getColor(R.color.colorCommon6));
+        wrap.addView(content);
+        return wrap;
     }
 
     private void resetForm() {
@@ -355,7 +366,6 @@ public class TokenCreateFragment extends Fragment {
         decimalsSpinner.setSelection(17);
         supplyEditText.setText("");
         setError(null);
-        deployedContractAddress = null;
     }
 
     private static String text(EditText e) {

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop .gas-container: rest = gas-outline.svg, pressed = gas-active.svg
+     (rasterized from the desktop SVGs). The estimating "pulse" state is a
+     separate image swap done in code (GasChipController). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true" android:drawable="@drawable/ic_gas_active" />
+    <item android:drawable="@drawable/ic_gas_outline" />
+</selector>

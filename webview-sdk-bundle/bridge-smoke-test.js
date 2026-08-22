@@ -71,7 +71,8 @@ function check(name, cond, detail) {
         'swapGetAmountsIn', 'swapEstimateGas', 'swapCheckAllowance', 'swapEstimateApproveGas',
         'swapSubmitApproval', 'swapSubmitSwap', 'liquidityListPools', 'liquidityListPositions',
         'liquidityGetPairInfo', 'liquidityCheckAllowance', 'liquiditySubmitApprove',
-        'liquiditySubmitAdd', 'liquiditySubmitRemove', 'poolsSubmitCreatePair']) {
+        'liquiditySubmitAdd', 'liquiditySubmitRemove', 'poolsSubmitCreatePair',
+        'tokensEstimateDeployGas', 'tokensSubmitCreate', 'dexEstimateGas']) {
         check('bridge.' + fn, typeof sandbox.bridge[fn] === 'function');
     }
 

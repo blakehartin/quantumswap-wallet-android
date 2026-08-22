@@ -21,7 +21,8 @@ import com.quantumswap.app.bridge.BridgeCallback;
 import com.quantumswap.app.utils.DexPayloads;
 import com.quantumswap.app.utils.GlobalMethods;
 import com.quantumswap.app.utils.ReleaseStore;
-import com.quantumswap.app.view.dialog.DexUnlockPrompt;
+import com.quantumswap.app.gas.GasKind;
+import com.quantumswap.app.view.dialog.TransactionReviewDialog;
 import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.view.widget.TokenPickerController;
 import com.quantumswap.app.viewmodel.JsonViewModel;
@@ -40,9 +41,6 @@ import org.json.JSONObject;
 public class SwapFragment extends Fragment {
 
     private static final String TAG = "SwapFragment";
-
-    private static final int APPROVAL_POLL_MAX_ATTEMPTS = 24;
-    private static final long APPROVAL_POLL_INTERVAL_MS = 5000;
 
     private OnSwapCompleteListener mListener;
 
@@ -423,264 +421,152 @@ public class SwapFragment extends Fragment {
     }
 
     /** Desktop createSwapWorkflowStepPlan: optional "Approve FROM",
-     *  always "Swap FROM -> TO". */
+     *  always "Swap FROM -> TO". Each step estimates its own gas,
+     *  reviews (fields + "i agree" + password) and confirms via the
+     *  scan-API status poll inside {@link TxStepsDialog}. */
     private void showStepsDialog(boolean needsApproval) {
-        String fromSym = sanitizeSymbol(fromPicker.getSymbol());
-        String toSym = sanitizeSymbol(toPicker.getSymbol());
+        final String fromSym = sanitizeSymbol(fromPicker.getSymbol());
+        final String toSym = sanitizeSymbol(toPicker.getSymbol());
+        final String amountIn = text(amountInEditText);
+        final String amountOut = lastQuotedAmountOut == null ? "" : lastQuotedAmountOut;
+        final ReleaseStore.Release release = ReleaseStore.readActive(KeyViewModel.getSecureStorage());
+        final String fromContract = resolveTokenContract(fromPicker.getTokenValue(), release);
+        final String toContract = resolveTokenContract(toPicker.getTokenValue(), release);
+        final boolean fromNative = "Q".equals(fromPicker.getTokenValue());
+
+        // Desktop buildSwapReview: base rows shared by both steps.
+        String routeSuffix = "";
+        if (routeTextView.getVisibility() == View.VISIBLE) {
+            String route = routeTextView.getText().toString();
+            int idx = route.indexOf(": ");
+            if (idx >= 0 && route.indexOf(" > ") > 0) {
+                routeSuffix = " (" + route.substring(idx + 2).replace(" > ", " -> ") + ")";
+            }
+        }
+        TransactionReviewDialog.ReviewSpec base = new TransactionReviewDialog.ReviewSpec()
+                .action(jsonViewModel.lang("swap", "Swap") + " " + fromSym + " "
+                        + jsonViewModel.lang("swap-for", "for") + " " + toSym + routeSuffix)
+                .fromTokenContract(fromContract)
+                .toTokenContract(toContract)
+                .fromAddress(walletAddress)
+                .toAddress(release.router)
+                .quantityValue(fromNative ? amountIn : "0")
+                .tokenQuantityValue(amountIn + " " + fromSym + " "
+                        + jsonViewModel.lang("swap-for", "for") + " " + amountOut + " " + toSym)
+                .networkText(TransactionReviewDialog.networkText(jsonViewModel));
+
         java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
         if (needsApproval) {
+            TransactionReviewDialog.ReviewSpec approveReview = new TransactionReviewDialog.ReviewSpec()
+                    .action(jsonViewModel.lang("approve", "Approve") + " " + fromSym)
+                    .fromTokenContractLabelKey("approval-token-contract")
+                    .toTokenContract(TransactionReviewDialog.HIDE)
+                    .toAddress(fromContract)
+                    .quantityValue("0")
+                    .tokenQuantityLabelKey("approval-token-quantity")
+                    .tokenQuantityValue(amountIn + " " + fromSym);
             steps.add(new TxStepsDialog.Step(
                     jsonViewModel.lang("approve", "Approve") + " " + fromSym,
-                    this::runApproveStep));
+                    GasKind.APPROVE, true,
+                    () -> {
+                        JSONObject p = new JSONObject();
+                        p.put("fromTokenValue", fromPicker.getTokenValue());
+                        p.put("fromDecimals", fromPicker.getDecimals());
+                        p.put("amount", amountIn);
+                        return p;
+                    },
+                    approveReview,
+                    (gasLimit, credentials, chain, cb) -> {
+                        try {
+                            JSONObject payload = DexPayloads.withKeys(getContext(),
+                                    credentials.privateKeyBase64, credentials.publicKeyBase64);
+                            TxStepsDialog.overlay(payload, chain);
+                            payload.put("fromTokenValue", fromPicker.getTokenValue());
+                            payload.put("fromDecimals", fromPicker.getDecimals());
+                            payload.put("amount", amountIn);
+                            payload.put("gasLimit", gasLimit);
+                            KeyViewModel.getBridge().dexCallAsync("swapSubmitApproval", payload,
+                                    stepCallback(cb));
+                        } catch (Exception e) {
+                            cb.fail(sanitizeError(e.getMessage()));
+                        }
+                    }));
         }
         steps.add(new TxStepsDialog.Step(
                 jsonViewModel.lang("swap", "Swap") + " " + fromSym + " -> " + toSym,
-                this::runSwapStep));
-        sessionKeys = null;
-        flowInFlight = true;
-        new TxStepsDialog(getContext(),
-                jsonViewModel.lang("swap", "Swap"),
-                jsonViewModel.lang("transaction-id", "Transaction ID"),
-                jsonViewModel.getOkByLangValues(),
-                steps,
+                GasKind.SWAP, true,
                 () -> {
+                    JSONObject p = new JSONObject();
+                    putSwapArgs(p);
+                    p.put("recipientAddress", walletAddress);
+                    return p;
+                },
+                null,
+                (gasLimit, credentials, chain, cb) -> {
+                    try {
+                        JSONObject payload = DexPayloads.withKeys(getContext(),
+                                credentials.privateKeyBase64, credentials.publicKeyBase64);
+                        TxStepsDialog.overlay(payload, chain);
+                        putSwapArgs(payload);
+                        payload.put("recipientAddress", walletAddress);
+                        payload.put("gasLimit", gasLimit);
+                        KeyViewModel.getBridge().dexCallAsync("swapSubmitSwap", payload,
+                                stepCallback(cb));
+                    } catch (Exception e) {
+                        cb.fail(sanitizeError(e.getMessage()));
+                    }
+                }));
+        flowInFlight = true;
+        stepsDialog = new TxStepsDialog(getActivity(), jsonViewModel, walletAddress,
+                jsonViewModel.lang("swap", "Swap"), base, steps,
+                null,
+                () -> {
+                    stepsDialog = null;
                     flowInFlight = false;
-                    sessionKeys = null;
                     lastQuotedAmountOut = null;
+                    if (getView() == null) return;
                     setAmountSilently(amountInEditText, "");
                     setAmountSilently(amountOutEditText, "");
                     updateBalances();
-                }).show();
+                });
+        stepsDialog.show();
     }
 
-    private String[] sessionKeys;
+    private TxStepsDialog stepsDialog;
 
-    /** Password-gate each steps-dialog session once: the first step
-     *  that needs signing keys raises the shared unlock prompt; later
-     *  steps reuse the loaded keys. */
-    private void withSessionKeys(final Runnable onReady,
-                                 final TxStepsDialog.StepCallbacks cb) {
-        if (sessionKeys != null) {
-            onReady.run();
-            return;
-        }
-        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
-            final Context appCtx = getActivity().getApplicationContext();
-            new Thread(() -> {
-                try {
-                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                    mainHandler.post(() -> {
-                        sessionKeys = keys;
-                        onReady.run();
-                    });
-                } catch (Exception e) {
-                    mainHandler.post(() -> cb.fail(sanitizeError(e.getMessage())));
-                }
-            }).start();
-        }, cb::cancelled);
+    @Override
+    public void onDestroyView() {
+        if (stepsDialog != null) { stepsDialog.dismiss(); stepsDialog = null; }
+        super.onDestroyView();
     }
 
-    // ---- Approve step -------------------------------------------------
-
-    private void runApproveStep(final TxStepsDialog.StepCallbacks cb) {
-        String message = jsonViewModel.lang("swap-approval-confirm-message",
-                        "You are approving [QUANTITY] tokens for use in QuantumSwap.")
-                .replace("[QUANTITY]", text(amountInEditText));
-        new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("approve", "Approve"))
-                .setMessage(message)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                        (d, w) -> withSessionKeys(() -> submitApproval(cb), cb))
-                .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> {
-                    d.dismiss();
-                    cb.cancelled();
-                })
-                .setCancelable(false)
-                .show();
+    /** "Q" -> the active release's wrapped-Q contract (what the bridge
+     *  maps it to); otherwise the 0x contract address as-is. */
+    private static String resolveTokenContract(String tokenValue, ReleaseStore.Release release) {
+        if (tokenValue == null) return "";
+        return "Q".equals(tokenValue) ? release.wq : tokenValue;
     }
 
-    private void submitApproval(final TxStepsDialog.StepCallbacks cb) {
-        try {
-            cb.status(jsonViewModel.lang("swap-approval-status-wait",
-                    "Please wait, checking..."));
-            // Gas estimate for the approve; fall back to the token
-            // default when estimation reverts (e.g. RPC hiccup).
-            JSONObject estimate = DexPayloads.base();
-            estimate.put("fromTokenValue", fromPicker.getTokenValue());
-            estimate.put("fromDecimals", fromPicker.getDecimals());
-            estimate.put("amount", text(amountInEditText));
-            estimate.put("fromAddress", walletAddress);
-            KeyViewModel.getBridge().dexCallAsync("swapEstimateApproveGas", estimate,
-                    new BridgeCallback() {
-                        @Override public void onResult(String jsonResult) {
-                            postSubmitApproval(cb, parseGas(jsonResult, 84000L));
-                        }
-                        @Override public void onError(String error) {
-                            postSubmitApproval(cb, 84000L);
-                        }
-                    });
-        } catch (Exception e) {
-            cb.fail(sanitizeError(e.getMessage()));
-        }
-    }
-
-    /** Like uiCallback but errors fail the CURRENT STEP (red cross +
-     *  retryable footer) instead of the whole form. */
-    private BridgeCallback stepUiCallback(final TxStepsDialog.StepCallbacks cb,
-                                          final DataConsumer onData) {
+    /** Bridge submit result -> step submitted(txHash) / fail(message),
+     *  on the main thread. */
+    private BridgeCallback stepCallback(final TxStepsDialog.RunCallback cb) {
         return new BridgeCallback() {
             @Override public void onResult(final String jsonResult) {
                 mainHandler.post(() -> {
-                    if (getActivity() == null) return;
                     try {
-                        JSONObject result = new JSONObject(jsonResult);
-                        onData.accept(result.getJSONObject("data"));
+                        JSONObject data = new JSONObject(jsonResult).getJSONObject("data");
+                        String hash = data.optString("txHash", "");
+                        if (hash.isEmpty()) throw new IllegalStateException("No transaction hash returned");
+                        cb.submitted(hash);
                     } catch (Exception e) {
                         cb.fail(sanitizeError(e.getMessage()));
                     }
                 });
             }
             @Override public void onError(final String error) {
-                mainHandler.post(() -> {
-                    if (getActivity() == null) return;
-                    cb.fail(sanitizeError(error));
-                });
+                mainHandler.post(() -> cb.fail(sanitizeError(error)));
             }
         };
-    }
-
-    private void postSubmitApproval(final TxStepsDialog.StepCallbacks cb,
-                                    final long gasLimit) {
-        mainHandler.post(() -> {
-            try {
-                JSONObject payload = DexPayloads.withKeys(getContext(),
-                        sessionKeys[0], sessionKeys[1]);
-                payload.put("fromTokenValue", fromPicker.getTokenValue());
-                payload.put("fromDecimals", fromPicker.getDecimals());
-                payload.put("amount", text(amountInEditText));
-                payload.put("gasLimit", gasLimit);
-                KeyViewModel.getBridge().dexCallAsync("swapSubmitApproval", payload,
-                        stepUiCallback(cb, data -> {
-                            cb.status(jsonViewModel.lang("swap-approval-status-pending",
-                                    "Transaction is still pending..."));
-                            cb.confirming(jsonViewModel.lang("tx-step-confirming",
-                                    "Confirming..."));
-                            pollAllowance(cb, 0);
-                        }));
-            } catch (Exception e) {
-                cb.fail(sanitizeError(e.getMessage()));
-            }
-        });
-    }
-
-    private void pollAllowance(final TxStepsDialog.StepCallbacks cb, final int attempt) {
-        if (attempt >= APPROVAL_POLL_MAX_ATTEMPTS) {
-            cb.fail(jsonViewModel.lang("swap-approval-may-close",
-                    "You may close this dialog, the transaction for approval has already been submitted."));
-            return;
-        }
-        if (attempt > 2) {
-            cb.status(jsonViewModel.lang("swap-approval-status-minute",
-                    "This can take up to a minute..."));
-        }
-        mainHandler.postDelayed(() -> {
-            if (getActivity() == null) return;
-            try {
-                JSONObject payload = DexPayloads.base();
-                payload.put("fromTokenValue", fromPicker.getTokenValue());
-                payload.put("fromDecimals", fromPicker.getDecimals());
-                payload.put("requiredAmount", text(amountInEditText));
-                payload.put("ownerAddress", walletAddress);
-                KeyViewModel.getBridge().dexCallAsync("swapCheckAllowance", payload,
-                        new BridgeCallback() {
-                            @Override public void onResult(String jsonResult) {
-                                mainHandler.post(() -> {
-                                    if (getActivity() == null) return;
-                                    boolean sufficient = false;
-                                    try {
-                                        JSONObject result = new JSONObject(jsonResult);
-                                        sufficient = result.getJSONObject("data")
-                                                .optBoolean("sufficient", false);
-                                    } catch (Exception ignore) { }
-                                    if (sufficient) {
-                                        cb.done();
-                                    } else {
-                                        pollAllowance(cb, attempt + 1);
-                                    }
-                                });
-                            }
-                            @Override public void onError(String error) {
-                                mainHandler.post(() -> pollAllowance(cb, attempt + 1));
-                            }
-                        });
-            } catch (Exception e) {
-                cb.fail(sanitizeError(e.getMessage()));
-            }
-        }, APPROVAL_POLL_INTERVAL_MS);
-    }
-
-    // ---- Swap step ----------------------------------------------------
-
-    private void runSwapStep(final TxStepsDialog.StepCallbacks cb) {
-        String message = jsonViewModel.lang("swap-execute-confirm-message",
-                        "You are swapping [FROM_AMOUNT] [FROM_SYMBOL] for at least [TO_AMOUNT] [TO_SYMBOL].")
-                .replace("[FROM_AMOUNT]", text(amountInEditText))
-                .replace("[FROM_SYMBOL]", sanitizeSymbol(fromPicker.getSymbol()))
-                .replace("[TO_AMOUNT]", minOutForDisplay())
-                .replace("[TO_SYMBOL]", sanitizeSymbol(toPicker.getSymbol()));
-        new AlertDialog.Builder(getContext())
-                .setTitle(jsonViewModel.lang("swap", "Swap"))
-                .setMessage(message)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(),
-                        (d, w) -> withSessionKeys(() -> estimateAndSubmitSwap(cb), cb))
-                .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> {
-                    d.dismiss();
-                    cb.cancelled();
-                })
-                .setCancelable(false)
-                .show();
-    }
-
-    private void estimateAndSubmitSwap(final TxStepsDialog.StepCallbacks cb) {
-        try {
-            cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
-            JSONObject estimate = DexPayloads.base();
-            putSwapArgs(estimate);
-            estimate.put("recipientAddress", walletAddress);
-            KeyViewModel.getBridge().dexCallAsync("swapEstimateGas", estimate,
-                    new BridgeCallback() {
-                        @Override public void onResult(String jsonResult) {
-                            submitSwap(cb, parseGas(jsonResult, 300000L));
-                        }
-                        @Override public void onError(String error) {
-                            submitSwap(cb, 300000L);
-                        }
-                    });
-        } catch (Exception e) {
-            cb.fail(sanitizeError(e.getMessage()));
-        }
-    }
-
-    private void submitSwap(final TxStepsDialog.StepCallbacks cb, final long gasLimit) {
-        mainHandler.post(() -> {
-            if (getActivity() == null) return;
-            try {
-                JSONObject payload = DexPayloads.withKeys(getContext(),
-                        sessionKeys[0], sessionKeys[1]);
-                putSwapArgs(payload);
-                payload.put("recipientAddress", walletAddress);
-                payload.put("gasLimit", gasLimit);
-                KeyViewModel.getBridge().dexCallAsync("swapSubmitSwap", payload,
-                        stepUiCallback(cb, data -> {
-                            cb.txHash(data.optString("txHash", ""));
-                            cb.status(jsonViewModel.lang("swap-succeeded",
-                                    "Swap transaction succeeded."));
-                            cb.done();
-                        }));
-            } catch (Exception e) {
-                cb.fail(sanitizeError(e.getMessage()));
-            }
-        });
     }
 
     private void putSwapArgs(JSONObject payload) throws Exception {
@@ -736,20 +622,6 @@ public class SwapFragment extends Fragment {
         }
     }
 
-    /** Display-side min-out: quoted amount reduced by the slippage
-     *  tolerance, mirroring the bridge's integer math closely enough
-     *  for the confirmation copy (the bridge computes the binding value). */
-    private String minOutForDisplay() {
-        try {
-            java.math.BigDecimal out = new java.math.BigDecimal(lastQuotedAmountOut);
-            java.math.BigDecimal pct = java.math.BigDecimal.valueOf(100 - (int) slippagePercent())
-                    .divide(java.math.BigDecimal.valueOf(100));
-            return out.multiply(pct).stripTrailingZeros().toPlainString();
-        } catch (Exception e) {
-            return lastQuotedAmountOut == null ? "-" : lastQuotedAmountOut;
-        }
-    }
-
     /** Symbols are untrusted on-chain strings; strip control chars and
      *  clamp length before rendering (mirrors desktop sanitization). */
     private static String sanitizeSymbol(String s) {
@@ -762,17 +634,6 @@ public class SwapFragment extends Fragment {
         if (addr == null) return "";
         return addr.length() > 14
                 ? addr.substring(0, 8) + "..." + addr.substring(addr.length() - 4) : addr;
-    }
-
-    private static long parseGas(String jsonResult, long fallback) {
-        try {
-            JSONObject result = new JSONObject(jsonResult);
-            long v = Long.parseLong(result.getJSONObject("data").getString("gasLimit"));
-            // Same padding the desktop applies to estimates.
-            return Math.max(fallback, (v * 12) / 10);
-        } catch (Exception e) {
-            return fallback;
-        }
     }
 
     private static String text(EditText e) {

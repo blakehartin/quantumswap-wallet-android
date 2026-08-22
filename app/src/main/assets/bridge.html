@@ -648,7 +648,7 @@ var bridge = {
  var tx = await wallet.sendTransaction({
  to: payload.to,
  value: BigInt(payload.value),
- gasLimit: Number(payload.gasLimit),
+ gasLimit: Number(payload.gasLimit) || 21000,
  signingContext: signingContext
  });
  _timeLog('send.sendTransaction(populate+sign+broadcast)='
@@ -716,7 +716,7 @@ var bridge = {
  var _t3 = _now();
  var token = QuantumSwapSDK.IERC20.connect(payload.contract, wallet);
  var tx = await token.transfer(payload.to, BigInt(payload.amount), {
- gasLimit: Number(payload.gasLimit),
+ gasLimit: Number(payload.gasLimit) || 84000,
  signingContext: signingContext
  });
  _timeLog('token.transfer(populate+sign+broadcast)='
@@ -2114,6 +2114,86 @@ Object.assign(bridge, {
             sendError(requestId, dexSanitizeError(e));
         } finally {
             dexZeroKeys(keyRefs);
+        }
+    },
+
+    // Desktop gas.ts buildEstimateGasPayload + electron/ipc/gas.ts: one
+    // txKind-dispatched gas estimate. Echoes the release addresses so
+    // the Android review dialog can fill its contract/to rows without a
+    // separate release lookup. Java applies the kind's buffer and falls
+    // back to the kind default when this errors.
+    dexEstimateGas: async function(requestId) {
+        try {
+            if (!requireSDK(requestId)) return;
+            var payload = pullPayload(requestId);
+            if (!payload) return;
+            var kind = String(payload.txKind || '');
+            var provider = await dexInit(payload);
+            var release = dexResolveRelease(payload);
+            var getAddress = QuantumSwapSDK.getAddress;
+            var fromRaw = payload.fromAddress || payload.ownerAddress;
+            if (!fromRaw) { sendError(requestId, 'From address required'); return; }
+            var from = getAddress(String(fromRaw));
+            var tx = null;
+            if (kind === 'sendCoin') {
+                tx = {
+                    to: getAddress(String(payload.toAddress)),
+                    value: dexAsBigInt(QuantumSwapSDK.parseUnits(dexNormalizeAmount(payload.amount), 18))
+                };
+            } else if (kind === 'sendToken') {
+                var sDecimals = typeof payload.fromDecimals === 'number' ? payload.fromDecimals : 18;
+                var sAmount = QuantumSwapSDK.parseUnits(dexNormalizeAmount(payload.amount), sDecimals);
+                var sToken = QuantumSwapSDK.IERC20.connect(getAddress(String(payload.contractAddress)), provider);
+                tx = await sToken.populateTransaction.transfer(getAddress(String(payload.toAddress)), sAmount);
+            } else if (kind === 'approve') {
+                var aAddr = dexMapTokenValue(payload.fromTokenValue, release);
+                var aDecimals = typeof payload.fromDecimals === 'number' ? payload.fromDecimals : 18;
+                var aAmount = QuantumSwapSDK.parseUnits(dexNormalizeAmount(payload.amount), aDecimals);
+                var aToken = QuantumSwapSDK.IERC20.connect(getAddress(aAddr), provider);
+                tx = await aToken.populateTransaction.approve(getAddress(release.router), aAmount);
+            } else if (kind === 'approveToken') {
+                var tToken = QuantumSwapSDK.IERC20.connect(getAddress(String(payload.tokenAddress)), provider);
+                tx = await tToken.populateTransaction.approve(getAddress(release.router), QuantumSwapSDK.MaxUint256);
+            } else if (kind === 'swap') {
+                var swRouter = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, provider);
+                var swTo = payload.recipientAddress || payload.toAddress || fromRaw;
+                var swPath = await dexResolveSwapPath(provider, payload.fromTokenValue, payload.toTokenValue, release);
+                var swDeadline = await dexGetDeadline(provider, SWAP_DEADLINE_SECONDS);
+                var swAmounts = await dexResolveSwapAmounts(swRouter, swPath, payload);
+                tx = await swRouter.populateTransaction.swapExactTokensForTokens(
+                    swAmounts.amountInWei, swAmounts.amountOutMinWei, swPath, getAddress(String(swTo)), swDeadline);
+            } else if (kind === 'addLiquidity' || kind === 'removeLiquidity') {
+                var lCall = kind === 'addLiquidity'
+                    ? await dexBuildAddLiquidityCall(payload, release, provider)
+                    : await dexBuildRemoveLiquidityCall(payload, release, provider);
+                var lRouter = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, provider);
+                tx = await lRouter.populateTransaction[lCall.method].apply(lRouter.populateTransaction, lCall.args);
+                if (lCall.value && lCall.value > 0n) tx.value = lCall.value;
+            } else if (kind === 'createPair') {
+                var cFactory = QuantumSwapSDK.QuantumSwapV2Factory.connect(release.factory, provider);
+                tx = await cFactory.populateTransaction.createPair(
+                    getAddress(dexMapTokenValue(String(payload.tokenAValue), release)),
+                    getAddress(dexMapTokenValue(String(payload.tokenBValue), release)));
+            } else if (kind === 'deployToken') {
+                var dFactory = new QuantumSwapSDK.ContractFactory(
+                    JSON.parse(CREATED_TOKEN_ABI_JSON), CREATED_TOKEN_BYTECODE);
+                var dSupply = QuantumSwapSDK.parseUnits(String(payload.totalSupply), Number(payload.decimals));
+                tx = await dFactory.getDeployTransaction(
+                    String(payload.name), String(payload.symbol), Number(payload.decimals), dSupply);
+            } else {
+                sendError(requestId, 'Unknown txKind');
+                return;
+            }
+            tx.from = from;
+            var gas = await provider.estimateGas(tx);
+            sendResult(requestId, {
+                gasLimit: gas.toString(),
+                router: release.router,
+                factory: release.factory,
+                wq: release.wq
+            });
+        } catch (e) {
+            sendError(requestId, dexSanitizeError(e));
         }
     }
 });

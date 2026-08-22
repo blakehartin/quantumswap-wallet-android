@@ -23,7 +23,11 @@ import com.quantumswap.app.bridge.BridgeCallback;
 import com.quantumswap.app.utils.CoinUtils;
 import com.quantumswap.app.utils.DexPayloads;
 import com.quantumswap.app.utils.GlobalMethods;
-import com.quantumswap.app.view.dialog.DexUnlockPrompt;
+import com.quantumswap.app.gas.GasChipController;
+import com.quantumswap.app.gas.GasKind;
+import com.quantumswap.app.utils.ReleaseStore;
+import com.quantumswap.app.view.dialog.TransactionReviewDialog;
+import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.view.widget.TokenPickerController;
 import com.quantumswap.app.viewmodel.JsonViewModel;
 import com.quantumswap.app.viewmodel.KeyViewModel;
@@ -84,6 +88,9 @@ public class PoolsFragment extends Fragment {
         progress = view.findViewById(R.id.progress_pools);
         refreshButton = view.findViewById(R.id.imageButton_pools_refresh);
         createButton = view.findViewById(R.id.button_pools_create);
+        gasChip = new GasChipController(getActivity(), jsonViewModel, walletAddress,
+                view.findViewById(R.id.imageView_pools_gas_icon),
+                view.findViewById(R.id.textView_pools_gas_fee), GasKind.CREATE_PAIR);
 
         title.setText(jsonViewModel.lang("pools", "Pools"));
         listTitle.setText(jsonViewModel.lang("all-pools", "All pools"));
@@ -103,7 +110,24 @@ public class PoolsFragment extends Fragment {
                 (EditText) view.findViewById(R.id.editText_pools_tokenB_custom),
                 walletAddress, customLabel);
 
-        backArrow.setOnClickListener(v -> mListener.onPoolsCompleteByBackArrow());
+        tokenAPicker.setOnChanged(this::scheduleGasEstimate);
+        tokenBPicker.setOnChanged(this::scheduleGasEstimate);
+
+        listPanel = view.findViewById(R.id.layout_pools_list_panel);
+        formPanel = view.findViewById(R.id.layout_pools_form_panel);
+        TextView createLink = view.findViewById(R.id.textView_pools_create_link);
+        createLink.setText(jsonViewModel.lang("create-pair", "Create Pair"));
+        createLink.setPaintFlags(createLink.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        createLink.setOnClickListener(v -> showCreatePanel());
+        listScroll = view.findViewById(R.id.scroll_pools_list);
+        listScroll.capToScreen(dp(70));
+
+        // Desktop: back from the create form returns to the pool list;
+        // back from the list leaves the screen.
+        backArrow.setOnClickListener(v -> {
+            if (formPanel.getVisibility() == View.VISIBLE) showListPanel();
+            else mListener.onPoolsCompleteByBackArrow();
+        });
         refreshButton.setOnClickListener(v -> loadPools());
         createButton.setOnClickListener(v -> startCreate());
 
@@ -150,7 +174,10 @@ public class PoolsFragment extends Fragment {
                 + " / " + (sym1.isEmpty() ? shortAddr(pool.optString("token1", "")) : sym1);
 
         TextView pairText = new TextView(ctx);
-        pairText.setText(pairLabel);
+        // Symbols link to the token contract on the block explorer.
+        com.quantumswap.app.view.widget.ExplorerLinks.setPairLabel(pairText,
+                sym0.isEmpty() ? shortAddr(pool.optString("token0", "")) : sym0, pool.optString("token0", ""),
+                sym1.isEmpty() ? shortAddr(pool.optString("token1", "")) : sym1, pool.optString("token1", ""));
         pairText.setTypeface(null, Typeface.BOLD);
         pairText.setTextSize(15);
         pairText.setTextColor(getResources().getColor(R.color.colorCommon6));
@@ -213,54 +240,117 @@ public class PoolsFragment extends Fragment {
         }
     }
 
-    /** Desktop tx-steps model: one "Create Pair" step driven by the
-     *  shared steps dialog. */
+    /** Desktop createPair flow: one "Create Pair" step; review rows
+     *  contract/to = factory, Quantity (Q) "0". The screen gas chip's
+     *  estimate (or manual override) seeds the step. */
     private void showCreateSteps() {
-        String label = jsonViewModel.lang("create-pair", "Create Pair");
-        java.util.List<com.quantumswap.app.view.dialog.TxStepsDialog.Step> steps =
-                new java.util.ArrayList<>();
-        steps.add(new com.quantumswap.app.view.dialog.TxStepsDialog.Step(label,
-                this::runCreateStep));
-        new com.quantumswap.app.view.dialog.TxStepsDialog(getContext(),
-                label,
-                jsonViewModel.lang("transaction-id", "Transaction ID"),
-                jsonViewModel.getOkByLangValues(),
-                steps,
-                this::loadPools).show();
+        final String label = jsonViewModel.lang("create-pair", "Create Pair");
+        final ReleaseStore.Release release = ReleaseStore.readActive(KeyViewModel.getSecureStorage());
+        final String symA = sanitize(tokenAPicker.getSymbol());
+        final String symB = sanitize(tokenBPicker.getSymbol());
+        TransactionReviewDialog.ReviewSpec base = new TransactionReviewDialog.ReviewSpec()
+                .action(label + ": " + symA + " / " + symB)
+                .contractAddress(release.factory)
+                .fromAddress(walletAddress)
+                .toAddress(release.factory)
+                .quantityValue("0")
+                .networkText(TransactionReviewDialog.networkText(jsonViewModel));
+        java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
+        steps.add(new TxStepsDialog.Step(label, GasKind.CREATE_PAIR, true,
+                this::createPairPayload,
+                null,
+                (gasLimit, credentials, chain, cb) -> {
+                    try {
+                        JSONObject submit = DexPayloads.withKeys(getActivity().getApplicationContext(),
+                                credentials.privateKeyBase64, credentials.publicKeyBase64);
+                        TxStepsDialog.overlay(submit, chain);
+                        submit.put("tokenAValue", tokenAPicker.getTokenValue());
+                        submit.put("tokenBValue", tokenBPicker.getTokenValue());
+                        submit.put("gasLimit", gasLimit);
+                        KeyViewModel.getBridge().dexCallAsync("poolsSubmitCreatePair", submit,
+                                stepCallback(cb));
+                    } catch (Exception e) {
+                        cb.fail(sanitizeError(e.getMessage()));
+                    }
+                }));
+        stepsDialog = new TxStepsDialog(getActivity(), jsonViewModel, walletAddress,
+                label, base, steps, null,
+                () -> {
+                    stepsDialog = null;
+                    if (getView() != null) showListPanel();
+                });
+        stepsDialog.show();
     }
 
-    private void runCreateStep(final com.quantumswap.app.view.dialog.TxStepsDialog.StepCallbacks cb) {
-        DexUnlockPrompt.show(getActivity(), jsonViewModel, password -> {
-            final Context appCtx = getActivity().getApplicationContext();
-            new Thread(() -> {
-                try {
-                    final String[] keys = DexUnlockPrompt.loadWalletKeys(appCtx, walletAddress);
-                    mainHandler.post(() -> submitCreate(keys, cb));
-                } catch (Exception e) {
-                    mainHandler.post(() -> cb.fail(e.getMessage()));
-                }
-            }).start();
-        }, cb::cancelled);
+    private TxStepsDialog stepsDialog;
+    private View listPanel;
+    private com.quantumswap.app.view.widget.MaxHeightScrollView listScroll;
+    private View formPanel;
+
+    /** Desktop showPoolsCreatePanel: swap to the form with a clean slate. */
+    private void showCreatePanel() {
+        tokenAPicker.restoreSelection(null);
+        tokenBPicker.restoreSelection(null);
+        clearStatus();
+        if (gasChip != null) gasChip.reset();
+        listPanel.setVisibility(View.GONE);
+        formPanel.setVisibility(View.VISIBLE);
     }
 
-    private void submitCreate(final String[] keys,
-                              final com.quantumswap.app.view.dialog.TxStepsDialog.StepCallbacks cb) {
-        try {
-            cb.status(jsonViewModel.getSubmittingTransactionByLangValues());
-            JSONObject submit = DexPayloads.withKeys(getActivity().getApplicationContext(), keys[0], keys[1]);
-            submit.put("tokenAValue", tokenAPicker.getTokenValue());
-            submit.put("tokenBValue", tokenBPicker.getTokenValue());
-            submit.put("gasLimit", 3000000);
-            KeyViewModel.getBridge().dexCallAsync("poolsSubmitCreatePair", submit,
-                    uiCallback(data -> {
-                        cb.txHash(data.optString("txHash", ""));
-                        cb.status(jsonViewModel.lang("transaction-submitted",
-                                "Transaction submitted."));
-                        cb.done();
-                    }));
-        } catch (Exception e) {
-            cb.fail(e.getMessage());
-        }
+    /** Desktop showPoolsScreen list view. */
+    private void showListPanel() {
+        formPanel.setVisibility(View.GONE);
+        listPanel.setVisibility(View.VISIBLE);
+        loadPools();
+    }
+    private GasChipController gasChip;
+
+    private JSONObject createPairPayload() throws Exception {
+        JSONObject p = new JSONObject();
+        p.put("tokenAValue", tokenAPicker.getTokenValue());
+        p.put("tokenBValue", tokenBPicker.getTokenValue());
+        p.put("ownerAddress", walletAddress);
+        return p;
+    }
+
+    /** Desktop scheduleCreatePairGasEstimate: 2 s debounce on token
+     *  change; nothing is requested until both sides are set. */
+    private void scheduleGasEstimate() {
+        if (gasChip == null) return;
+        gasChip.schedule(() -> {
+            String a = tokenAPicker.getTokenValue();
+            String b = tokenBPicker.getTokenValue();
+            if (a == null || b == null || a.isEmpty() || b.isEmpty() || a.equalsIgnoreCase(b)) {
+                return null;
+            }
+            try { return createPairPayload(); } catch (Exception e) { return null; }
+        });
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (stepsDialog != null) { stepsDialog.dismiss(); stepsDialog = null; }
+        super.onDestroyView();
+    }
+
+    private BridgeCallback stepCallback(final TxStepsDialog.RunCallback cb) {
+        return new BridgeCallback() {
+            @Override public void onResult(final String jsonResult) {
+                mainHandler.post(() -> {
+                    try {
+                        JSONObject data = new JSONObject(jsonResult).getJSONObject("data");
+                        String hash = data.optString("txHash", "");
+                        if (hash.isEmpty()) throw new IllegalStateException("No transaction hash returned");
+                        cb.submitted(hash);
+                    } catch (Exception e) {
+                        cb.fail(sanitizeError(e.getMessage()));
+                    }
+                });
+            }
+            @Override public void onError(final String error) {
+                mainHandler.post(() -> cb.fail(sanitizeError(error)));
+            }
+        };
     }
 
     private void resolveMeta(final TokenPickerController picker, final Runnable onDone) {

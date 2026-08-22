@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop #modalTxSteps: title + numbered step list (badge + label
-     + substatus) + wait line + transaction-id row + error line + one
-     footer button that drives the current step. Controlled by
-     TxStepsDialog. -->
+<!-- Desktop #modalTxSteps: title row (title · gas chip · ×), "please
+     wait" line, step list, Transaction ID row (copy + explorer), result
+     block, error line, footer button (label + inline spinner).
+     Controlled by TxStepsDialog. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -25,6 +26,35 @@
             android:textSize="18sp"
             android:textColor="@color/colorWhite" />
 
+        <!-- Desktop #divTxStepsGas (.gas-header-right): fee label + pump. -->
+        <LinearLayout
+            android:id="@+id/linearLayout_tx_steps_gas"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/textView_tx_steps_gas_fee"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:textSize="12sp"
+                android:textColor="#B3FFFFFF" />
+
+            <ImageView
+                android:id="@+id/imageView_tx_steps_gas_icon"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Gas"
+                android:src="@drawable/gas_icon_selector" />
+
+        </LinearLayout>
+
         <TextView
             android:id="@+id/textView_tx_steps_dismiss"
             android:layout_width="32dp"
@@ -39,6 +69,15 @@
 
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/textView_tx_steps_wait"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textSize="13sp"
+        android:textColor="@color/colorWhite"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/linearLayout_tx_steps_list"
         android:layout_width="match_parent"
@@ -46,35 +85,57 @@
         android:layout_marginTop="12dp"
         android:orientation="vertical" />
 
-    <TextView
-        android:id="@+id/textView_tx_steps_wait"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:textSize="12sp"
-        android:textColor="#C7C1D9"
-        android:visibility="gone" />
-
     <LinearLayout
         android:id="@+id/linearLayout_tx_steps_hash_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="12dp"
         android:orientation="vertical"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/textView_tx_steps_hash_label"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="@color/colorCommon3" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/textView_tx_steps_hash_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@color/colorWhite" />
+
+            <ImageButton
+                android:id="@+id/imageButton_tx_steps_copy"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/image_selector"
+                android:src="@drawable/copy_outline"
+                app:tint="@color/colorCommon6" />
+
+            <ImageButton
+                android:id="@+id/imageButton_tx_steps_explorer"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:background="@drawable/image_selector"
+                android:src="@drawable/address_explore"
+                app:tint="@color/colorCommon6" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/textView_tx_steps_hash"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
             android:textIsSelectable="true"
             android:fontFamily="monospace"
             android:textSize="11sp"
@@ -82,11 +143,20 @@
 
     </LinearLayout>
 
+    <!-- Desktop #divTxStepsResult (e.g. deployed token contract address). -->
+    <LinearLayout
+        android:id="@+id/linearLayout_tx_steps_result"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/textView_tx_steps_error"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="12dp"
         android:textSize="12sp"
         android:textColor="#DC2626"
         android:visibility="gone" />
@@ -94,9 +164,18 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:gravity="end"
+        android:layout_marginTop="20dp"
+        android:gravity="end|center_vertical"
         android:orientation="horizontal">
+
+        <ProgressBar
+            android:id="@+id/progress_tx_steps_footer"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginEnd="8dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#C4B5FD"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/button_tx_steps_action"
