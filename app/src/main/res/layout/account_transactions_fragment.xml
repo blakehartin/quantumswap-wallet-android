@@ -123,11 +123,11 @@
                                 android:text="@string/transaction_completed_title"
                                 android:textStyle="bold"
                                 android:textSize="14dp"
-                                android:textColor="@color/colorCommon2"
+                                android:textColor="@color/colorWhite"
                                 android:textOn="@string/transaction_completed_title"
                                 android:textOff="@string/transaction_completed_title"
                                 android:checked="true"
-                                android:background="@drawable/toggle_selector"/>
+                                android:background="@drawable/segment_underline"/>
 
                             <ToggleButton
                                 android:id="@+id/toggleButton_account_transactions_langValues_pending"
@@ -137,11 +137,11 @@
                                 android:textAllCaps="false"
                                 android:text="@string/transaction_completed_title"
                                 android:textSize="14dp"
-                                android:textColor="@color/colorCommon3"
+                                android:textColor="@color/colorWhite"
                                 android:textOn="@string/transaction_pending_title"
                                 android:textOff="@string/transaction_pending_title"
                                 android:checked="false"
-                                android:background="@drawable/toggle_selector"/>
+                                android:background="@drawable/segment_underline"/>
 
                         </LinearLayout>
 

@@ -207,12 +207,12 @@ public class AccountTransactionsFragment extends Fragment  {
         accountTransactionCompletedToggleButton.setOnClickListener(new View.OnClickListener(){
             public void onClick(View v) {
                 accountTransactionCompletedToggleButton.setChecked(true);
-                accountTransactionCompletedToggleButton.setTypeface(accountTransactionCompletedToggleButton.getTypeface(), Typeface.BOLD);
-                accountTransactionCompletedToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorCommon2));
+                accountTransactionCompletedToggleButton.setTypeface(Typeface.create(accountTransactionCompletedToggleButton.getTypeface(), Typeface.BOLD));
+                accountTransactionCompletedToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorWhite));
 
                 accountTransactionPendingToggleButton.setChecked(false);
-                accountTransactionPendingToggleButton.setTypeface(accountTransactionPendingToggleButton.getTypeface(), Typeface.NORMAL);
-                accountTransactionPendingToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorCommon3));
+                accountTransactionPendingToggleButton.setTypeface(Typeface.create(accountTransactionPendingToggleButton.getTypeface(), Typeface.NORMAL));
+                accountTransactionPendingToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorWhite));
 
                 transactionStatus = 0;
                 pageIndex = -1;
@@ -235,12 +235,12 @@ public class AccountTransactionsFragment extends Fragment  {
         accountTransactionPendingToggleButton.setOnClickListener(new View.OnClickListener(){
             public void onClick(View v) {
                 accountTransactionPendingToggleButton.setChecked(true);
-                accountTransactionPendingToggleButton.setTypeface(accountTransactionPendingToggleButton.getTypeface(), Typeface.BOLD);
-                accountTransactionPendingToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorCommon2));
+                accountTransactionPendingToggleButton.setTypeface(Typeface.create(accountTransactionPendingToggleButton.getTypeface(), Typeface.BOLD));
+                accountTransactionPendingToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorWhite));
 
                 accountTransactionCompletedToggleButton.setChecked(false);
-                accountTransactionCompletedToggleButton.setTypeface(accountTransactionCompletedToggleButton.getTypeface(), Typeface.NORMAL);
-                accountTransactionCompletedToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorCommon3));
+                accountTransactionCompletedToggleButton.setTypeface(Typeface.create(accountTransactionCompletedToggleButton.getTypeface(), Typeface.NORMAL));
+                accountTransactionCompletedToggleButton.setTextColor(ContextCompat.getColor(getContext(), R.color.colorWhite));
 
                 transactionStatus = 1;
                 pageIndex = -1;
