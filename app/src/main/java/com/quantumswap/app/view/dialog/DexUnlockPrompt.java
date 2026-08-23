@@ -88,6 +88,7 @@ public final class DexUnlockPrompt {
                             .strongboxUsername(activity));
         }
         GlobalMethods.focusAndShowKeyboard(passwordEditText, dialog);
+        GlobalMethods.requestAutofill(passwordEditText);
 
         final Button unlockButton = dialog.findViewById(R.id.button_unlock_langValues_unlock);
         unlockButton.setText(jsonViewModel.getUnlockByLangValues());
