@@ -611,6 +611,14 @@ public class HomeWalletFragment extends Fragment {
                     if (!pwRaw.equals(pwRaw.trim())) {
                         message = jsonViewModel.getPasswordSpaceByErrors();
                     } else if (pwRaw.equals(homeSetWalletRetypePasswordEditText.getText().toString())) {
+                        // Capture the accepted password NOW. The restore
+                        // flows (file/folder) never revisit this EditText,
+                        // and the strongbox password is defined by the
+                        // FIRST createMainKey call -- leaving this unset
+                        // let a restore bootstrap the strongbox with a
+                        // different password than the one just chosen.
+                        // Pinned by FirstTimeRestorePasswordTest.
+                        walletPassword = pwRaw;
                         // Finish the autofill context now that the user
                         // has accepted a valid password. The set-password
                         // UI lives inside HomeActivity (which never
@@ -2599,9 +2607,12 @@ public class HomeWalletFragment extends Fragment {
      *  strongbox write performed inside the batch loop reuses this value so a
      *  user whose strongbox password differs from the backup-file password can
      *  still complete the restore. Cleared at the end of the session
-     *  ({@link #clearPendingStrongboxPassword}). When {@code null}, the per-file
-     *  backup password is used as the strongbox-write password (matches the iOS
-     *  "post-onboarding" branch where the contract assumes they match). */
+     *  ({@link #clearPendingStrongboxPassword}). Never {@code null} once a
+     *  restore session is under way: on a first-time session it is the
+     *  onboarding {@code walletPassword} (the strongbox is created from it at
+     *  the first {@code saveWallet}); otherwise a password the user proved via
+     *  the unlock dialog. Both restore paths throw if it is missing -- the
+     *  per-file backup password is never used for a strongbox write. */
     private String pendingStrongboxPassword = null;
 
     /** Wipe the strongbox-restore password as soon as the batch completes (or
@@ -2611,6 +2622,15 @@ public class HomeWalletFragment extends Fragment {
     private void clearPendingStrongboxPassword() {
         pendingStrongboxPassword = null;
     }
+
+    /** True for a FIRST-TIME restore session: no strongbox existed when the
+     *  session started, so the first saveWallet will create it under
+     *  {@link #pendingStrongboxPassword}. Drives the post-restore unlock gate
+     *  in {@link #completeRestoreNavigation}: only a session that just defined
+     *  the app password forces an immediate re-entry, mirroring
+     *  {@link #finishBackupAndNavigateToHome} on the create/seed paths.
+     *  Reset at every session start. */
+    private boolean restoreBootstrappedStrongbox = false;
 
     private void showRestoreFolderFilePicker(final Uri folderUri) {
         final Context ctx = getContext();
@@ -2656,6 +2676,7 @@ public class HomeWalletFragment extends Fragment {
                         }
                         firstRestoredIndexKey = null;
                         clearPendingStrongboxPassword();
+                        restoreBootstrappedStrongbox = false;
                         final List<com.quantumswap.app.backup.CloudBackupManager.BackupCandidate> pending =
                                 new ArrayList<>();
                         final List<String> restored = new ArrayList<>();
@@ -2769,9 +2790,12 @@ public class HomeWalletFragment extends Fragment {
      * even though the backup password was correct.</p>
      *
      * <ul>
-     *   <li>Strongbox uninitialized (fresh install) → user enters a
-     *       new password, {@code createMainKey} runs, password is
-     *       cached.</li>
+     *   <li>Strongbox uninitialized (fresh install) → the onboarding
+     *       {@code walletPassword} is used directly, no dialog; if it
+     *       was lost (process death behind the picker) the dialog
+     *       collects one, validated like the Set-Password screen.
+     *       Either way NOTHING is written here: the first
+     *       {@code saveWallet} creates the strongbox.</li>
      *   <li>Strongbox initialized but locked → user enters the
      *       device password, {@code unlock} runs, password is
      *       cached.</li>
@@ -2790,7 +2814,25 @@ public class HomeWalletFragment extends Fragment {
             onCancel.run();
             return;
         }
-        SecureStorage secureStorage = KeyViewModel.getSecureStorage();
+        final SecureStorage secureStorage = KeyViewModel.getSecureStorage();
+        // First-time setup: the user already chose the app password on the
+        // Set-Password screen. RECORD it as the strongbox-write password and
+        // continue; do NOT create the strongbox here. Creation happens at
+        // the first saveWallet (performRestoreFromUri / attemptBatchDecrypt),
+        // the same create-then-save contract as saveWalletFromSeedWords and
+        // iOS createNewStrongboxWithInitialWallet. Creating it at pick time
+        // meant a quit before the first wallet was saved left a permanent
+        // EMPTY strongbox (HomeActivity routes on isInitialized(), so the
+        // next launch opened a blank wallet with no way back to onboarding),
+        // and a background create that threw after writing the slot file
+        // failed silently. Pinned by FirstTimeRestorePasswordTest.
+        if (walletPassword != null && !walletPassword.isEmpty()
+                && !secureStorage.isInitialized(ctx)) {
+            pendingStrongboxPassword = walletPassword;
+            restoreBootstrappedStrongbox = true;
+            onReady.run();
+            return;
+        }
         showStrongboxRestoreUnlockDialog(secureStorage, onReady, onCancel);
     }
 
@@ -2919,12 +2961,30 @@ public class HomeWalletFragment extends Fragment {
                         lockoutMessage = com.quantumswap.app.security
                                 .UnlockAttemptLimiter.userFacingLockoutMessage(lim.remainingSeconds, jsonViewModel);
                     } else if (!secureStorage.isInitialized(ctx)) {
-                        secureStorage.createMainKey(ctx, password);
-                        success = true;
-                        com.quantumswap.app.security.UnlockAttemptLimiter
-                                .recordSuccess(ctx,
-                                        com.quantumswap.app.security
-                                                .UnlockAttemptLimiter.Channel.STRONGBOX_UNLOCK);
+                        // First-time session that lost walletPassword (process
+                        // death while the picker was in front). This dialog
+                        // then DEFINES the app password, so it must apply the
+                        // Set-Password screen's rules: HomeActivity's unlock
+                        // trims before SecureStorage.unlock, so a password with
+                        // leading/trailing whitespace would create a strongbox
+                        // that can never be opened -- with a wallet inside.
+                        // Accept the validated password as the strongbox-write
+                        // password; the first saveWallet creates the strongbox.
+                        // Do NOT create it here -- nothing may be written
+                        // before a wallet is. Force the post-restore unlock
+                        // gate so a typo surfaces immediately.
+                        if (password.length() <= GlobalMethods.MINIMUM_PASSWORD_LENGTH) {
+                            lockoutMessage = jsonViewModel.getPasswordSpecByErrors();
+                        } else if (!password.equals(password.trim())) {
+                            lockoutMessage = jsonViewModel.getPasswordSpaceByErrors();
+                        } else {
+                            success = true;
+                            restoreBootstrappedStrongbox = true;
+                            com.quantumswap.app.security.UnlockAttemptLimiter
+                                    .recordSuccess(ctx,
+                                            com.quantumswap.app.security
+                                                    .UnlockAttemptLimiter.Channel.STRONGBOX_UNLOCK);
+                        }
                     } else if (secureStorage.isUnlocked()) {
                         // Strongbox already unlocked from an earlier
                         // session activity (e.g. the user came in
@@ -3024,13 +3084,16 @@ public class HomeWalletFragment extends Fragment {
                     if (secureStorage == null) {
                         throw new IllegalStateException("SecureStorage unavailable");
                     }
-                    // Strongbox unlock/verify is handled BEFORE this method
-                    // runs, by ensureStrongboxReadyForRestore (called from
-                    // showRestoreFolderFilePicker). At this point the
-                    // strongbox is guaranteed to be unlocked AND
-                    // pendingStrongboxPassword is guaranteed to be non-null
-                    // (the user proved they know the device's strongbox
-                    // password). The {@code password} argument here is the
+                    // The strongbox-write password is settled BEFORE this
+                    // method runs, by ensureStrongboxReadyForRestore (called
+                    // from showRestoreFolderFilePicker): pendingStrongboxPassword
+                    // is guaranteed non-null (first-time: the onboarding
+                    // walletPassword; otherwise a password the user proved via
+                    // the unlock dialog). The strongbox ITSELF may not exist
+                    // yet on a first-time session -- it is created right before
+                    // the first saveWallet below, never earlier, so quitting
+                    // mid-restore cannot leave an empty strongbox behind.
+                    // The {@code password} argument here is the
                     // per-file BACKUP password and is used only for
                     // {@code CloudBackupManager.decryptWallet}; never as a
                     // strongbox-write password (the previous "fall back to
@@ -3150,13 +3213,26 @@ public class HomeWalletFragment extends Fragment {
 
                         // Strongbox writes require the device's strongbox
                         // password (NOT the per-file backup password).
-                        // ensureStrongboxReadyForRestore validated
-                        // strongboxWritePassword up-front via verifyPassword,
+                        // strongboxWritePassword was settled up-front by
+                        // ensureStrongboxReadyForRestore: proved via
+                        // verifyPassword/unlock on an existing strongbox, or
+                        // the onboarding password on a first-time session
+                        // (where the strongbox is created from it right below),
                         // so a WrongPasswordException here is an invariant
                         // violation — surface it loudly and abort the batch
                         // instead of silently dropping the user into the
                         // misleading "try a different backup password" prompt.
                         try {
+                            // First-time session: create the strongbox now,
+                            // together with the first wallet (create-then-save
+                            // in one task, as saveWalletFromSeedWords does).
+                            // Runs once; isInitialized() is true afterwards.
+                            if (!secureStorage.isInitialized(getContext())) {
+                                secureStorage.createMainKey(getContext(), strongboxWritePassword);
+                            }
+                            if (!secureStorage.isUnlocked()) {
+                                secureStorage.unlock(getContext(), strongboxWritePassword);
+                            }
                             secureStorage.saveWallet(getContext(), newIndex,
                                     walletJson.toString(), strongboxWritePassword);
                         } catch (com.quantumswap.app.keystorage.WrongPasswordException wpe) {
@@ -3367,10 +3443,8 @@ public class HomeWalletFragment extends Fragment {
                         new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface d, int which) {
-                                if (!restored.isEmpty() && firstRestoredIndexKey != null
-                                        && mHomeWalletListener != null) {
-                                    mHomeWalletListener.onHomeWalletCompleteByHomeMain(
-                                            firstRestoredIndexKey);
+                                if (!restored.isEmpty() && firstRestoredIndexKey != null) {
+                                    completeRestoreNavigation(firstRestoredIndexKey);
                                 }
                             }
                         })
@@ -3392,7 +3466,45 @@ public class HomeWalletFragment extends Fragment {
         return row;
     }
 
+    /** Terminal navigation for both restore flows (file + folder).
+     *
+     *  <p>First-time setup (this session just created the strongbox --
+     *  {@link #restoreBootstrappedStrongbox}): force a password re-entry via
+     *  {@code HomeActivity.requirePasswordReentryThenNavigate} before the
+     *  main wallet screen, exactly like the create / restore-from-seed paths
+     *  do in {@link #finishBackupAndNavigateToHome}. A mismatch between what
+     *  the user thinks the password is and what the strongbox was created
+     *  with must surface NOW, not on the next cold start.
+     *
+     *  <p>Post-onboarding restores (strongbox pre-existed; its password was
+     *  verified by the unlock dialog earlier in this session) keep the
+     *  direct route. Pinned by FirstTimeRestorePasswordTest. */
+    private void completeRestoreNavigation(final String indexKey) {
+        walletPassword = null;
+        clearPendingStrongboxPassword();
+        android.app.Activity act = getActivity();
+        if (restoreBootstrappedStrongbox
+                && act instanceof com.quantumswap.app.view.activities.HomeActivity) {
+            restoreBootstrappedStrongbox = false;
+            ((com.quantumswap.app.view.activities.HomeActivity) act)
+                    .requirePasswordReentryThenNavigate(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mHomeWalletListener != null) {
+                                mHomeWalletListener.onHomeWalletCompleteByHomeMain(indexKey);
+                            }
+                        }
+                    });
+        } else {
+            markActivityUnlocked();
+            if (mHomeWalletListener != null) {
+                mHomeWalletListener.onHomeWalletCompleteByHomeMain(indexKey);
+            }
+        }
+    }
+
     private void handleRestoreFromUri(final Uri fileUri) {
+        restoreBootstrappedStrongbox = false;          // fresh session
         final ProgressBar progressBar = (ProgressBar) getView().findViewById(R.id.progress_loader_home_wallet);
         // Resolve the wallet address from the encrypted backup file's
         // plaintext JSON (top-level "address" field, readable WITHOUT
@@ -3421,7 +3533,25 @@ public class HomeWalletFragment extends Fragment {
                 getActivity().runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        showRestorePasswordDialog(fileUri, address, progressBar);
+                        // Settle the strongbox password FIRST (first-time:
+                        // bootstrapped silently from walletPassword;
+                        // post-onboarding: verified via the unlock dialog)
+                        // so the backup-password prompt below only ever
+                        // decrypts the file. Same session contract as the
+                        // folder-restore path.
+                        ensureStrongboxReadyForRestore(new Runnable() {
+                            @Override
+                            public void run() {
+                                showRestorePasswordDialog(fileUri, address, progressBar);
+                            }
+                        }, new Runnable() {
+                            @Override
+                            public void run() {
+                                // Only reachable by user action (unlock dialog
+                                // closed) or a detached fragment; nothing has
+                                // been written, so simply stay on the screen.
+                            }
+                        });
                     }
                 });
             }
@@ -3473,16 +3603,29 @@ public class HomeWalletFragment extends Fragment {
                         return;
                     }
                     SecureStorage secureStorage = KeyViewModel.getSecureStorage();
-                    // On a fresh install the file-restore screen is the first touch of
-                    // SecureStorage, so the backup password also bootstraps the app's
-                    // main key (mirrors create-wallet at L1097-1104 and the folder-restore
-                    // path in attemptBatchDecrypt). Skipped on subsequent restores when
-                    // SecureStorage is already initialized + unlocked.
+                    // The strongbox-write password was settled BEFORE this
+                    // dialog by ensureStrongboxReadyForRestore (first-time:
+                    // the onboarding walletPassword; post-onboarding: verified
+                    // via the unlock dialog). On a first-time session the
+                    // strongbox is created HERE, together with the first
+                    // wallet -- never earlier, so a quit before this point
+                    // leaves nothing behind.
+                    // backupPassword decrypts the .wallet file and NOTHING
+                    // else -- feeding it into createMainKey/unlock/saveWallet
+                    // silently replaced the app unlock password on a fresh
+                    // install. Mirrors attemptBatchDecrypt's
+                    // strongboxWritePassword contract; pinned by
+                    // FirstTimeRestorePasswordTest.
+                    final String strongboxWritePassword = pendingStrongboxPassword;
+                    if (strongboxWritePassword == null) {
+                        throw new IllegalStateException(
+                                "restore: strongbox password not collected before decrypt");
+                    }
                     if (!secureStorage.isInitialized(getContext())) {
-                        secureStorage.createMainKey(getContext(), backupPassword);
+                        secureStorage.createMainKey(getContext(), strongboxWritePassword);
                     }
                     if (!secureStorage.isUnlocked()) {
-                        secureStorage.unlock(getContext(), backupPassword);
+                        secureStorage.unlock(getContext(), strongboxWritePassword);
                     }
                     if (!secureStorage.isUnlocked()) {
                         throw new IllegalStateException("SecureStorage is locked");
@@ -3503,7 +3646,7 @@ public class HomeWalletFragment extends Fragment {
                     walletJson.put("seed", seedJoined);
 
                     secureStorage.saveWallet(getContext(), newIndex, walletJson.toString(),
-                            backupPassword);
+                            strongboxWritePassword);
 
                     PrefConnect.WALLET_ADDRESS_TO_INDEX_MAP.put(dw.address, indexKey);
                     PrefConnect.WALLET_INDEX_TO_ADDRESS_MAP.put(indexKey, dw.address);
@@ -3525,10 +3668,7 @@ public class HomeWalletFragment extends Fragment {
                         public void run() {
                             if (waitDlg != null) try { waitDlg.dismiss(); } catch (Throwable ignore) { }
                             if (control != null) control.dismiss();
-                            markActivityUnlocked();
-                            if (mHomeWalletListener != null) {
-                                mHomeWalletListener.onHomeWalletCompleteByHomeMain(indexKey);
-                            }
+                            completeRestoreNavigation(indexKey);
                         }
                     });
                 } catch (final Exception e) {

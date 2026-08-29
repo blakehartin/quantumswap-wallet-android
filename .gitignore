@@ -98,3 +98,7 @@ keystore.properties
 *.aab
 .kotlin/
 .vscode/
+
+### Python ###
+__pycache__/
+*.py[cod]

@@ -27,10 +27,22 @@ android {
         // it. See TlsPinning.applyTo for the full posture comment.
         minSdk 29
         targetSdk 36
-        versionCode 3
-        versionName "1.2"
+        versionCode 4
+        versionName "1.3"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Screenshot escape hatch for FLAG_SECURE. HomeActivity sets
+        // FLAG_SECURE on its whole window, which blocks the framework
+        // screenshot path for every screen in the app -- including the
+        // ones the Play listing has to show. Store-listing captures are
+        // taken from a debug build started with -PscreenshotMode; every
+        // other build, debug included, hardcodes false here.
+        //
+        // Release CANNOT opt in: the release buildType below has no
+        // override, so it inherits this literal. SecureWindowLockdownTest
+        // pins both that fact and the HomeActivity guard that reads it.
+        buildConfigField "boolean", "ALLOW_SCREENSHOTS", "false"
     }
 
     // Release signing sourced exclusively from environment
@@ -62,6 +74,12 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Opt in per-invocation, never by default:
+            //   ./gradlew :app:assembleDebug -PscreenshotMode
+            buildConfigField "boolean", "ALLOW_SCREENSHOTS",
+                    project.hasProperty("screenshotMode") ? "true" : "false"
+        }
         release {
             debuggable false
             minifyEnabled true

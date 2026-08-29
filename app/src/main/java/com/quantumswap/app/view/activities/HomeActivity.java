@@ -41,6 +41,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentTransaction;
 
+import com.quantumswap.app.BuildConfig;
 import com.quantumswap.app.R;
 import com.quantumswap.app.api.read.ApiClient;
 import com.quantumswap.app.api.read.model.BalanceResponse;
@@ -183,8 +184,18 @@ public class HomeActivity extends FragmentActivity implements
         // FLAG_SECURE blocks the framework's screenshot, screen
         // recording, and recents-thumbnail capture for this Window.
         // Mirrors the iOS UIScreen.captured guard.
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE);
+        //
+        // The single exception is a debug build assembled with
+        // -PscreenshotMode, used to capture the Play Store listing
+        // screenshots: this Window hosts every screen the listing has to
+        // show, so with FLAG_SECURE set every capture comes back black.
+        // The release buildType declares no override for
+        // ALLOW_SCREENSHOTS, so a shipped build always takes the branch
+        // below; SecureWindowLockdownTest pins that.
+        if (!BuildConfig.ALLOW_SCREENSHOTS) {
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE);
+        }
         try {
             //locale language
 
