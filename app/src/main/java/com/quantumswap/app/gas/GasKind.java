@@ -12,6 +12,9 @@ public enum GasKind {
     APPROVE("approve", 84000L, 10),
     APPROVE_TOKEN("approveToken", 84000L, 10),
     SWAP("swap", 200000L, 10),
+    /** Q -> WQ (WQ.deposit) / WQ -> Q (WQ.withdraw): a plain ERC20-sized call. */
+    WRAP("wrap", 84000L, 10),
+    UNWRAP("unwrap", 84000L, 10),
     ADD_LIQUIDITY("addLiquidity", 600000L, 10),
     REMOVE_LIQUIDITY("removeLiquidity", 600000L, 10),
     CREATE_PAIR("createPair", 4500000L, 10),

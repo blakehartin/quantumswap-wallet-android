@@ -221,7 +221,10 @@ public class SwapFragment extends Fragment {
         fromBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
         toBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
         flipRowView.setVisibility(ready ? View.VISIBLE : View.GONE);
+        final String mode = wrapMode();
+        nextButton.setText(modeLabel(mode));
         if (!ready || from.equalsIgnoreCase(to)) return;
+        if (mode != null) return;      // 1:1 wrap / unwrap: no route search
         setBusy(true);
         resolveMeta(fromPicker, () -> resolveMeta(toPicker, () -> fetchRoute(true)));
     }
@@ -283,6 +286,11 @@ public class SwapFragment extends Fragment {
                 || Double.parseDouble(amount) <= 0) {
             setAmountSilently(fromChanged ? amountOutEditText : amountInEditText, "");
             lastQuotedAmountOut = null;
+            return;
+        }
+        if (wrapMode() != null) {      // web-app swap.ts: wrap / unwrap quotes 1:1
+            setAmountSilently(fromChanged ? amountOutEditText : amountInEditText, amount);
+            lastQuotedAmountOut = amount;
             return;
         }
         setBusy(true);
@@ -400,7 +408,17 @@ public class SwapFragment extends Fragment {
         }
         if (flowInFlight) return;
         setBusy(true);
-        resolveMeta(fromPicker, () -> resolveMeta(toPicker, this::checkAllowanceThenSteps));
+        resolveMeta(fromPicker, () -> resolveMeta(toPicker, () -> {
+            // Wrap / unwrap talk to the WQ contract directly, and a native
+            // from-side travels as tx value through the payable router
+            // entry point: neither needs an allowance, so no approve step.
+            if (wrapMode() != null || "Q".equals(fromPicker.getTokenValue())) {
+                setBusy(false);
+                showStepsDialog(false);
+            } else {
+                checkAllowanceThenSteps();
+            }
+        }));
     }
 
     private void checkAllowanceThenSteps() {
@@ -433,6 +451,7 @@ public class SwapFragment extends Fragment {
         final String fromContract = resolveTokenContract(fromPicker.getTokenValue(), release);
         final String toContract = resolveTokenContract(toPicker.getTokenValue(), release);
         final boolean fromNative = "Q".equals(fromPicker.getTokenValue());
+        final String mode = wrapMode();
 
         // Desktop buildSwapReview: base rows shared by both steps.
         String routeSuffix = "";
@@ -444,18 +463,47 @@ public class SwapFragment extends Fragment {
             }
         }
         TransactionReviewDialog.ReviewSpec base = new TransactionReviewDialog.ReviewSpec()
-                .action(jsonViewModel.lang("swap", "Swap") + " " + fromSym + " "
+                .action((mode == null ? jsonViewModel.lang("swap", "Swap") : modeLabel(mode))
+                        + " " + fromSym + " "
                         + jsonViewModel.lang("swap-for", "for") + " " + toSym + routeSuffix)
                 .fromTokenContract(fromContract)
                 .toTokenContract(toContract)
                 .fromAddress(walletAddress)
-                .toAddress(release.router)
+                .toAddress(mode == null ? release.router : release.wq)
                 .quantityValue(fromNative ? amountIn : "0")
                 .tokenQuantityValue(amountIn + " " + fromSym + " "
                         + jsonViewModel.lang("swap-for", "for") + " " + amountOut + " " + toSym)
                 .networkText(TransactionReviewDialog.networkText(jsonViewModel));
 
         java.util.List<TxStepsDialog.Step> steps = new java.util.ArrayList<>();
+        if (mode != null) {
+            // Single WQ.deposit / WQ.withdraw step; no approval, no router.
+            final boolean isWrap = "wrap".equals(mode);
+            steps.add(new TxStepsDialog.Step(
+                    jsonViewModel.lang("step-" + mode, isWrap ? "Wrap" : "Unwrap")
+                            + " " + amountIn + " " + fromSym,
+                    isWrap ? GasKind.WRAP : GasKind.UNWRAP, true,
+                    () -> {
+                        JSONObject p = new JSONObject();
+                        p.put("amount", amountIn);
+                        return p;
+                    },
+                    null,
+                    (gasLimit, credentials, chain, cb) -> {
+                        try {
+                            JSONObject payload = DexPayloads.withKeys(getContext(),
+                                    credentials.privateKeyBase64, credentials.publicKeyBase64);
+                            TxStepsDialog.overlay(payload, chain);
+                            payload.put("amount", amountIn);
+                            payload.put("gasLimit", gasLimit);
+                            KeyViewModel.getBridge().dexCallAsync(
+                                    isWrap ? "swapSubmitWrap" : "swapSubmitUnwrap", payload,
+                                    stepCallback(cb));
+                        } catch (Exception e) {
+                            cb.fail(sanitizeError(e.getMessage()));
+                        }
+                    }));
+        } else {
         if (needsApproval) {
             TransactionReviewDialog.ReviewSpec approveReview = new TransactionReviewDialog.ReviewSpec()
                     .action(jsonViewModel.lang("approve", "Approve") + " " + fromSym)
@@ -516,9 +564,10 @@ public class SwapFragment extends Fragment {
                         cb.fail(sanitizeError(e.getMessage()));
                     }
                 }));
+        }
         flowInFlight = true;
         stepsDialog = new TxStepsDialog(getActivity(), jsonViewModel, walletAddress,
-                jsonViewModel.lang("swap", "Swap"), base, steps,
+                mode == null ? jsonViewModel.lang("swap", "Swap") : modeLabel(mode), base, steps,
                 null,
                 () -> {
                     stepsDialog = null;
@@ -545,6 +594,27 @@ public class SwapFragment extends Fragment {
     private static String resolveTokenContract(String tokenValue, ReleaseStore.Release release) {
         if (tokenValue == null) return "";
         return "Q".equals(tokenValue) ? release.wq : tokenValue;
+    }
+
+    /** Web-app swap.ts isWrap / isUnwrap: native Q against the active
+     *  release's WQ contract is a 1:1 wrap / unwrap (one WQ.deposit /
+     *  WQ.withdraw transaction), never a router swap -- both sides would
+     *  map to the same address and there is no route. Returns "wrap",
+     *  "unwrap" or null. */
+    private String wrapMode() {
+        String from = fromPicker.getTokenValue();
+        String to = toPicker.getTokenValue();
+        String wq = ReleaseStore.readActive(KeyViewModel.getSecureStorage()).wq;
+        if (wq == null || wq.isEmpty()) return null;
+        if ("Q".equals(from) && wq.equalsIgnoreCase(to)) return "wrap";
+        if ("Q".equals(to) && wq.equalsIgnoreCase(from)) return "unwrap";
+        return null;
+    }
+
+    /** Action-button / dialog label for the current pair: Next, Wrap or Unwrap. */
+    private String modeLabel(String mode) {
+        if (mode == null) return jsonViewModel.lang("next", "Next");
+        return jsonViewModel.lang(mode, "wrap".equals(mode) ? "Wrap" : "Unwrap");
     }
 
     /** Bridge submit result -> step submitted(txHash) / fail(message),

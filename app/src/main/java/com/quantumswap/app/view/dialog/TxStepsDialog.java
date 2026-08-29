@@ -314,6 +314,20 @@ public class TxStepsDialog {
                         stepGasLimit = gasLimit;
                         stepFeeNumber = feeNumber;
                         gasFeeText.setText(GasFee.formatQ(feeNumber));
+                        if (usedFallback) {
+                            // The estimate failed (typically the node's revert
+                            // reason) and the kind default was substituted.
+                            // Say so, show the returned error, and point at
+                            // the gas icon: silently submitting with the
+                            // default limit is how a swap ran out of gas
+                            // on-chain with no hint of the underlying revert.
+                            String notice = vm.err("gasEstimateError",
+                                    "Could not fetch the gas fee from the network. Using the default estimate.");
+                            if (error != null && !error.trim().isEmpty()) notice += " " + error.trim();
+                            notice += " " + vm.lang("gas-set-manually-hint",
+                                    "Tap the gas icon to set the gas limit manually.");
+                            setError(notice);
+                        }
                     }
                     com.quantumswap.app.gas.GasIconPulse.stop(gasIcon);
                     if (states[current] == State.ACTIVE) states[current] = State.READY;
@@ -464,8 +478,18 @@ public class TxStepsDialog {
     }
 
     private void onGasIconClick() {
-        if (stepGasLimit <= 0 || stepFeeNumber.isEmpty()) return;
-        GasConfigDialog.show(activity, vm, stepGasLimit, stepFeeNumber, (newLimit, newFee) -> {
+        // No estimate yet (or a failed one): open the editor pre-filled with the
+        // kind default rather than doing nothing -- that is exactly when the
+        // user needs to set the limit by hand. Same fallback GasChipController uses.
+        long limit = stepGasLimit;
+        String fee = stepFeeNumber;
+        if (limit <= 0 || fee.isEmpty()) {
+            if (current < 0 || current >= steps.size()) return;
+            Step s = steps.get(current);
+            limit = s.kind.defaultFor(s.pairExists);
+            fee = GasFee.feeNumberFor(activity, walletAddress, limit);
+        }
+        GasConfigDialog.show(activity, vm, limit, fee, (newLimit, newFee) -> {
             gasToken++;
             stepGasLimit = newLimit;
             stepFeeNumber = newFee;

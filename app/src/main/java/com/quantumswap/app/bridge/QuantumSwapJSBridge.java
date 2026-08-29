@@ -323,6 +323,10 @@ public class QuantumSwapJSBridge {
                     "swapCheckAllowance",
                     "swapSubmitApproval",
                     "swapSubmitSwap",
+
+                    "swapSubmitWrap",
+
+                    "swapSubmitUnwrap",
                     "liquidityListPools",
                     "liquidityListPositions",
                     "liquidityGetPairInfo",

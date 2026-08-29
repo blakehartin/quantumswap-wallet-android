@@ -1343,6 +1343,9 @@ async function dexFindSwapPath(provider, fromAddrRaw, toAddrRaw, release) {
     var getAddress = QuantumSwapSDK.getAddress;
     var fromAddr = getAddress(fromAddrRaw);
     var toAddr = getAddress(toAddrRaw);
+    // Identical mapped addresses (native Q vs WQ) have no route: that is
+    // a wrap / unwrap, never a router swap (web-app routeFinder.ts).
+    if (fromAddr.toLowerCase() === toAddr.toLowerCase()) return null;
     var factory = QuantumSwapSDK.QuantumSwapV2Factory.connect(release.factory, provider);
     var seen = {};
     seen[fromAddr.toLowerCase()] = true;
@@ -1453,14 +1456,64 @@ async function dexResolveSwapAmounts(router, path, payload) {
         var amountOutWei = parseUnits(String(payload.amountOut), toDecimals);
         var amountsIn = await router.getAmountsIn(amountOutWei, path);
         amountInWei = Array.isArray(amountsIn) ? amountsIn[0] : amountsIn;
-        amountOutMinWei = (amountOutWei * BigInt(100 - slippagePercent)) / 100n;
+        amountOutMinWei = dexMinWeiWithSlippage(amountOutWei, slippagePercent);
     } else {
         amountInWei = parseUnits(String(payload.amountIn), fromDecimals);
         var amountsOut = await router.getAmountsOut(amountInWei, path);
         var expectedOutWei = Array.isArray(amountsOut) ? amountsOut[amountsOut.length - 1] : amountsOut;
-        amountOutMinWei = (expectedOutWei * BigInt(100 - slippagePercent)) / 100n;
+        amountOutMinWei = dexMinWeiWithSlippage(expectedOutWei, slippagePercent);
     }
     return { amountInWei: amountInWei, amountOutMinWei: amountOutMinWei };
+}
+
+// Router call for a swap. Native "Q" on the from side uses the payable
+// ETH variant with the input amount as tx value -- the router wraps
+// internally, so the user needs neither WQ nor an allowance. Native "Q"
+// on the to side uses the ...ForETH variant so the user receives Q, not
+// WQ. All three are the ...SupportingFeeOnTransferTokens forms: they
+// derive each hop's input from the pair's ACTUAL balance delta and check
+// amountOutMin on what the recipient really received, so tokens that burn
+// or tax on transfer swap correctly (the standard forms trust the
+// pre-computed amounts and revert with the pair's K check when less than
+// amountIn arrives). They are equally correct for normal tokens; exact-in
+// only, which is all the clients send. Both submit (swapSubmitSwap) and
+// estimate (dexEstimateGas 'swap') build through here, so they cannot
+// diverge. Mirrors dexBuildAddLiquidityCall.
+async function dexBuildSwapCall(payload, release, provider) {
+    var getAddress = QuantumSwapSDK.getAddress;
+    var toRaw = payload.recipientAddress || payload.toAddress || payload.fromAddress || payload.ownerAddress;
+    if (!toRaw) throw new Error('Recipient address required');
+    var to = getAddress(String(toRaw));
+    var fromIsNative = payload.fromTokenValue === 'Q';
+    var toIsNative = payload.toTokenValue === 'Q';
+    if (fromIsNative && toIsNative) throw new Error('Both sides cannot be the native coin');
+    var router = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, provider);
+    var path = await dexResolveSwapPath(provider, payload.fromTokenValue, payload.toTokenValue, release);
+    var deadline = await dexGetDeadline(provider, SWAP_DEADLINE_SECONDS);
+    var amounts = await dexResolveSwapAmounts(router, path, payload);
+    if (fromIsNative) {
+        return { method: 'swapExactETHForTokensSupportingFeeOnTransferTokens',
+                 args: [amounts.amountOutMinWei, path, to, deadline],
+                 value: amounts.amountInWei };
+    }
+    if (toIsNative) {
+        return { method: 'swapExactTokensForETHSupportingFeeOnTransferTokens',
+                 args: [amounts.amountInWei, amounts.amountOutMinWei, path, to, deadline],
+                 value: 0n };
+    }
+    return { method: 'swapExactTokensForTokensSupportingFeeOnTransferTokens',
+             args: [amounts.amountInWei, amounts.amountOutMinWei, path, to, deadline],
+             value: 0n };
+}
+
+// Q <-> WQ is a 1:1 wrap / unwrap against the WQ contract itself:
+// WQ.deposit() with the amount as tx value, or WQ.withdraw(amount).
+// No router, no allowance. WQ is WETH-like (18 decimals).
+function dexBuildWrapCall(kind, payload) {
+    var amountWei = QuantumSwapSDK.parseUnits(String(payload.amount), 18);
+    return kind === 'wrap'
+        ? { method: 'deposit', args: [], value: amountWei }
+        : { method: 'withdraw', args: [amountWei], value: 0n };
 }
 
 // addLiquidity / addLiquidityETH arguments (desktop liquidity-tx.ts
@@ -1574,6 +1627,32 @@ function dexZeroKeys(keyRefs) {
     if (keyRefs) {
         if (keyRefs.priv) { try { keyRefs.priv.fill(0); } catch (_) {} }
         if (keyRefs.pub) { try { keyRefs.pub.fill(0); } catch (_) {} }
+    }
+}
+
+// Shared body of swapSubmitWrap / swapSubmitUnwrap (same shape as
+// swapSubmitApproval): sign one WQ.deposit / WQ.withdraw transaction.
+async function dexSubmitWrap(requestId, kind) {
+    var payload = null;
+    var keyRefs = { priv: null, pub: null };
+    try {
+        if (!requireSDK(requestId)) return;
+        payload = pullPayload(requestId);
+        if (!payload) return;
+        var provider = await dexInit(payload);
+        var release = dexResolveRelease(payload);
+        var wallet = await dexWalletFromBinaryKeys(requestId, provider, keyRefs, payload);
+        var call = dexBuildWrapCall(kind, payload);
+        var gasLimit = Number(payload.gasLimit) || 84000;
+        var wq = QuantumSwapSDK.WQ.connect(release.wq, wallet);
+        var overrides = dexSigningOverrides(wallet, payload,
+            call.value > 0n ? { gasLimit: gasLimit, value: call.value } : { gasLimit: gasLimit });
+        var tx = await wq[call.method].apply(wq, call.args.concat([overrides]));
+        sendResult(requestId, { txHash: tx.hash });
+    } catch (e) {
+        sendError(requestId, dexSanitizeError(e));
+    } finally {
+        dexZeroKeys(keyRefs);
     }
 }
 
@@ -1691,31 +1770,6 @@ Object.assign(bridge, {
         }
     },
 
-    // Gas estimate for the swap tx (desktop SwapQuoteEstimateGas).
-    swapEstimateGas: async function(requestId) {
-        try {
-            if (!requireSDK(requestId)) return;
-            var payload = pullPayload(requestId);
-            if (!payload) return;
-            var provider = await dexInit(payload);
-            var release = dexResolveRelease(payload);
-            var getAddress = QuantumSwapSDK.getAddress;
-            var router = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, provider);
-            var toAddress = payload.recipientAddress || payload.toAddress;
-            if (!toAddress) { sendError(requestId, 'Recipient address required'); return; }
-            var path = await dexResolveSwapPath(provider, payload.fromTokenValue, payload.toTokenValue, release);
-            var deadline = await dexGetDeadline(provider, SWAP_DEADLINE_SECONDS);
-            var amounts = await dexResolveSwapAmounts(router, path, payload);
-            var tx = await router.populateTransaction.swapExactTokensForTokens(
-                amounts.amountInWei, amounts.amountOutMinWei, path, getAddress(toAddress), deadline);
-            tx.from = getAddress(toAddress);
-            var gasLimit = await provider.estimateGas(tx);
-            sendResult(requestId, { gasLimit: gasLimit.toString() });
-        } catch (e) {
-            sendError(requestId, dexSanitizeError(e));
-        }
-    },
-
     // ERC20 allowance of the from-token toward the release router
     // (desktop SwapQuoteCheckAllowance).
     swapCheckAllowance: async function(requestId) {
@@ -1724,6 +1778,11 @@ Object.assign(bridge, {
             var payload = pullPayload(requestId);
             if (!payload) return;
             if (!payload.ownerAddress) { sendError(requestId, 'Owner address required'); return; }
+            // Native Q needs no allowance: it travels as tx value through the
+            // payable router entry point (see dexBuildSwapCall). Reporting it
+            // as sufficient keeps any caller from planning an "Approve WQ"
+            // step for coins the user holds unwrapped.
+            if (payload.fromTokenValue === 'Q') { sendResult(requestId, { sufficient: true, allowance: '0' }); return; }
             var provider = await dexInit(payload);
             var release = dexResolveRelease(payload);
             var getAddress = QuantumSwapSDK.getAddress;
@@ -1781,6 +1840,7 @@ Object.assign(bridge, {
             if (!requireSDK(requestId)) return;
             payload = pullPayload(requestId);
             if (!payload) return;
+            if (payload.fromTokenValue === 'Q') { sendError(requestId, 'Native coin needs no approval'); return; }
             var provider = await dexInit(payload);
             var release = dexResolveRelease(payload);
             var getAddress = QuantumSwapSDK.getAddress;
@@ -1813,20 +1873,13 @@ Object.assign(bridge, {
             if (!payload.recipientAddress) { sendError(requestId, 'Recipient address required'); return; }
             var provider = await dexInit(payload);
             var release = dexResolveRelease(payload);
-            var getAddress = QuantumSwapSDK.getAddress;
             var wallet = await dexWalletFromBinaryKeys(requestId, provider, keyRefs, payload);
-            var router = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, wallet);
-            var path = await dexResolveSwapPath(provider, payload.fromTokenValue, payload.toTokenValue, release);
-            var deadline = await dexGetDeadline(provider, SWAP_DEADLINE_SECONDS);
-            var amounts = await dexResolveSwapAmounts(router, path, payload);
+            var call = await dexBuildSwapCall(payload, release, provider);
             var gasLimit = Number(payload.gasLimit) || 200000;
-            var tx = await router.swapExactTokensForTokens(
-                amounts.amountInWei,
-                amounts.amountOutMinWei,
-                path,
-                getAddress(payload.recipientAddress),
-                deadline,
-                dexSigningOverrides(wallet, payload, { gasLimit: gasLimit }));
+            var router = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, wallet);
+            var overrides = dexSigningOverrides(wallet, payload,
+                call.value > 0n ? { gasLimit: gasLimit, value: call.value } : { gasLimit: gasLimit });
+            var tx = await router[call.method].apply(router, call.args.concat([overrides]));
             sendResult(requestId, { txHash: tx.hash });
         } catch (e) {
             sendError(requestId, dexSanitizeError(e));
@@ -1834,6 +1887,10 @@ Object.assign(bridge, {
             dexZeroKeys(keyRefs);
         }
     },
+
+    // Q -> WQ (WQ.deposit, value = amount) and WQ -> Q (WQ.withdraw(amount)).
+    swapSubmitWrap: function(requestId) { return dexSubmitWrap(requestId, 'wrap'); },
+    swapSubmitUnwrap: function(requestId) { return dexSubmitWrap(requestId, 'unwrap'); },
 
     // Browse all factory pairs with reserves (desktop LiquidityListPools).
     liquidityListPools: async function(requestId) {
@@ -2155,13 +2212,15 @@ Object.assign(bridge, {
                 var tToken = QuantumSwapSDK.IERC20.connect(getAddress(String(payload.tokenAddress)), provider);
                 tx = await tToken.populateTransaction.approve(getAddress(release.router), QuantumSwapSDK.MaxUint256);
             } else if (kind === 'swap') {
+                var swCall = await dexBuildSwapCall(payload, release, provider);
                 var swRouter = QuantumSwapSDK.QuantumSwapV2Router02.connect(release.router, provider);
-                var swTo = payload.recipientAddress || payload.toAddress || fromRaw;
-                var swPath = await dexResolveSwapPath(provider, payload.fromTokenValue, payload.toTokenValue, release);
-                var swDeadline = await dexGetDeadline(provider, SWAP_DEADLINE_SECONDS);
-                var swAmounts = await dexResolveSwapAmounts(swRouter, swPath, payload);
-                tx = await swRouter.populateTransaction.swapExactTokensForTokens(
-                    swAmounts.amountInWei, swAmounts.amountOutMinWei, swPath, getAddress(String(swTo)), swDeadline);
+                tx = await swRouter.populateTransaction[swCall.method].apply(swRouter.populateTransaction, swCall.args);
+                if (swCall.value && swCall.value > 0n) tx.value = swCall.value;
+            } else if (kind === 'wrap' || kind === 'unwrap') {
+                var wCall = dexBuildWrapCall(kind, payload);
+                var wq = QuantumSwapSDK.WQ.connect(release.wq, provider);
+                tx = await wq.populateTransaction[wCall.method].apply(wq.populateTransaction, wCall.args);
+                if (wCall.value > 0n) tx.value = wCall.value;
             } else if (kind === 'addLiquidity' || kind === 'removeLiquidity') {
                 var lCall = kind === 'addLiquidity'
                     ? await dexBuildAddLiquidityCall(payload, release, provider)

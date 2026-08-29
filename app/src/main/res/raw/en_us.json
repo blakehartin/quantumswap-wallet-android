@@ -306,6 +306,14 @@
       "step-add-liquidity": "Add liquidity",
       "step-remove-liquidity": "Remove liquidity",
       "step-create-pair": "Create pair",
+
+      "step-wrap": "Wrap",
+
+      "step-unwrap": "Unwrap",
+
+      "wrap": "Wrap",
+
+      "unwrap": "Unwrap",
       "estimated-gas-fee": "Estimated gas fee",
       "tx-step-submitting": "Submitting...",
       "tx-step-please-wait": "Please wait, this can take up to a minute...",
@@ -334,6 +342,8 @@
       "release-password-title": "Switch Release",
       "pleaseWait": "Please wait...",
       "pleaseWaitEstimatingGas": "Please wait, estimating gas...",
+
+      "gas-set-manually-hint": "Tap the gas icon to set the gas limit manually.",
       "please-wait-loading": "Please wait, loading...",
       "refresh": "Refresh",
       "errors-generic": "Something went wrong."
