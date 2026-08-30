@@ -278,22 +278,38 @@ public class LiquidityFragment extends Fragment {
         pairText.setTextColor(getResources().getColor(R.color.colorCommon6));
         row.addView(pairText);
 
-        TextView lpText = new TextView(ctx);
-        // LP tokens are fixed 18-decimals (pair contract semantics).
-        lpText.setText(jsonViewModel.lang("lp-tokens", "LP tokens") + ": "
-                + CoinUtils.formatUnits(pos.optString("lpBalance", "0"), 18));
-        lpText.setTextSize(13);
-        lpText.setTextColor(getResources().getColor(R.color.colorCommon3));
-        row.addView(lpText);
-
-        TextView reservesText = new TextView(ctx);
-        reservesText.setText(jsonViewModel.lang("pool-reserves", "Reserves") + ": "
-                + CoinUtils.formatUnits(pos.optString("reserve0", "0"), pos.optInt("decimals0", 18))
-                + " / "
-                + CoinUtils.formatUnits(pos.optString("reserve1", "0"), pos.optInt("decimals1", 18)));
-        reservesText.setTextSize(13);
-        reservesText.setTextColor(getResources().getColor(R.color.colorCommon3));
-        row.addView(reservesText);
+        // Web-app positions.ts stat rows: the user's own numbers
+        // (LP balance, pool share, the pooled amount of each token)
+        // instead of the raw LP figure + POOL-TOTAL reserves, which
+        // read as unexplained numbers. Exact BigInteger math mirrors
+        // web amount0 = lpBalance * reserve0 / totalSupply.
+        java.math.BigInteger lpBal = new java.math.BigInteger(pos.optString("lpBalance", "0"));
+        java.math.BigInteger supply = new java.math.BigInteger(pos.optString("totalSupply", "0"));
+        if (supply.signum() <= 0) supply = java.math.BigInteger.ONE;
+        java.math.BigInteger pooled0 = new java.math.BigInteger(pos.optString("reserve0", "0"))
+                .multiply(lpBal).divide(supply);
+        java.math.BigInteger pooled1 = new java.math.BigInteger(pos.optString("reserve1", "0"))
+                .multiply(lpBal).divide(supply);
+        double sharePct = 100.0 * lpBal.doubleValue() / supply.doubleValue();
+        String name0 = sym0.isEmpty() ? shortAddr(pos.optString("token0", "")) : sym0;
+        String name1 = sym1.isEmpty() ? shortAddr(pos.optString("token1", "")) : sym1;
+        String[] statLines = {
+                jsonViewModel.lang("lp-balance", "LP balance") + ": "
+                        + CoinUtils.formatUnits(lpBal.toString(), 18),
+                jsonViewModel.lang("pool-share", "Pool share") + ": "
+                        + String.format(java.util.Locale.US, "%.4f", sharePct) + "%",
+                jsonViewModel.lang("pooled-token", "Pooled [SYM]").replace("[SYM]", name0) + ": "
+                        + CoinUtils.formatUnits(pooled0.toString(), pos.optInt("decimals0", 18)),
+                jsonViewModel.lang("pooled-token", "Pooled [SYM]").replace("[SYM]", name1) + ": "
+                        + CoinUtils.formatUnits(pooled1.toString(), pos.optInt("decimals1", 18)),
+        };
+        for (String line : statLines) {
+            TextView statText = new TextView(ctx);
+            statText.setText(line);
+            statText.setTextSize(13);
+            statText.setTextColor(getResources().getColor(R.color.colorCommon3));
+            row.addView(statText);
+        }
 
         // Desktop position card: "Remove Liquidity" is a link.
         TextView removeButton = new TextView(ctx);
@@ -328,38 +344,129 @@ public class LiquidityFragment extends Fragment {
 
     private void promptRemove(final JSONObject pos) {
         Context ctx = getContext();
-        final EditText percentEditText = new EditText(ctx);
-        percentEditText.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        percentEditText.setText("100");
-        percentEditText.setGravity(android.view.Gravity.CENTER);
+        // Web-app removeLiquidity.ts form: percent readout + slider +
+        // preset chips + live "what you get" stats, replacing the old
+        // bare "100" number box that explained nothing. Display math
+        // uses BigInteger exactly like the position stat rows; the
+        // confirmed flow recomputes amounts in runRemoveFlow.
+        final java.math.BigInteger lpBal = new java.math.BigInteger(pos.optString("lpBalance", "0"));
+        java.math.BigInteger supplyTmp = new java.math.BigInteger(pos.optString("totalSupply", "0"));
+        if (supplyTmp.signum() <= 0) supplyTmp = java.math.BigInteger.ONE;
+        final java.math.BigInteger supply = supplyTmp;
+        final java.math.BigInteger reserve0 = new java.math.BigInteger(pos.optString("reserve0", "0"));
+        final java.math.BigInteger reserve1 = new java.math.BigInteger(pos.optString("reserve1", "0"));
+        final int decimals0 = pos.optInt("decimals0", 18);
+        final int decimals1 = pos.optInt("decimals1", 18);
+        String s0 = sanitize(pos.optString("symbol0", ""));
+        String s1 = sanitize(pos.optString("symbol1", ""));
+        final String name0 = s0.isEmpty() ? shortAddr(pos.optString("token0", "")) : s0;
+        final String name1 = s1.isEmpty() ? shortAddr(pos.optString("token1", "")) : s1;
+
+        final int[] percent = {50};
 
         LinearLayout wrap = new LinearLayout(ctx);
         wrap.setOrientation(LinearLayout.VERTICAL);
         wrap.setPadding(dp(24), dp(8), dp(24), 0);
-        TextView label = new TextView(ctx);
-        label.setText(jsonViewModel.lang("remove-percent", "Percent of position to remove"));
-        wrap.addView(label);
-        wrap.addView(percentEditText);
+
+        final TextView pctLabel = new TextView(ctx);
+        pctLabel.setTextSize(24);
+        pctLabel.setTypeface(null, Typeface.BOLD);
+        pctLabel.setTextColor(getResources().getColor(R.color.colorCommon6));
+        pctLabel.setGravity(android.view.Gravity.CENTER);
+        wrap.addView(pctLabel);
+
+        final android.widget.SeekBar seek = new android.widget.SeekBar(ctx);
+        seek.setMax(99); // progress 0..99 maps to percent 1..100
+        wrap.addView(seek);
+
+        LinearLayout chipRow = new LinearLayout(ctx);
+        chipRow.setOrientation(LinearLayout.HORIZONTAL);
+        final int[] presets = {25, 50, 75, 100};
+        final TextView[] chipViews = new TextView[presets.length];
+        final Runnable[] refresh = new Runnable[1];
+        for (int i = 0; i < presets.length; i++) {
+            final int v = presets[i];
+            TextView chip = new TextView(ctx);
+            chip.setText(v + "%");
+            chip.setTextSize(13);
+            chip.setPadding(dp(10), dp(5), dp(10), dp(5));
+            chip.setClickable(true);
+            chip.setOnClickListener(view -> {
+                percent[0] = v;
+                seek.setProgress(v - 1);
+                refresh[0].run();
+            });
+            chipViews[i] = chip;
+            chipRow.addView(chip);
+        }
+        wrap.addView(chipRow);
+
+        final String[] statNames = {
+                jsonViewModel.lang("remove-lp-burned", "LP tokens burned"),
+                jsonViewModel.lang("remove-you-receive", "You receive [SYM]").replace("[SYM]", name0),
+                jsonViewModel.lang("remove-you-receive", "You receive [SYM]").replace("[SYM]", name1),
+                jsonViewModel.lang("remove-your-lp-balance", "Your LP balance"),
+        };
+        final TextView[] statViews = new TextView[statNames.length];
+        for (int i = 0; i < statNames.length; i++) {
+            LinearLayout statRow = new LinearLayout(ctx);
+            statRow.setOrientation(LinearLayout.HORIZONTAL);
+            TextView n = new TextView(ctx);
+            n.setText(statNames[i]);
+            n.setTextSize(13);
+            n.setTextColor(getResources().getColor(R.color.colorCommon3));
+            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            statRow.addView(n, nlp);
+            TextView val = new TextView(ctx);
+            val.setTextSize(13);
+            val.setTextColor(getResources().getColor(R.color.colorCommon6));
+            statViews[i] = val;
+            statRow.addView(val);
+            wrap.addView(statRow);
+        }
+
+        TextView note = new TextView(ctx);
+        note.setText(jsonViewModel.lang("remove-approval-note",
+                "The router needs a one-time approval to spend your LP tokens before removing."));
+        note.setTextSize(12);
+        note.setTextColor(getResources().getColor(R.color.colorCommon3));
+        note.setPadding(0, dp(8), 0, 0);
+        wrap.addView(note);
+
+        refresh[0] = () -> {
+            pctLabel.setText(percent[0] + "%");
+            java.math.BigInteger burned = lpBal
+                    .multiply(java.math.BigInteger.valueOf(percent[0]))
+                    .divide(java.math.BigInteger.valueOf(100));
+            java.math.BigInteger recv0 = reserve0.multiply(burned).divide(supply);
+            java.math.BigInteger recv1 = reserve1.multiply(burned).divide(supply);
+            statViews[0].setText(CoinUtils.formatUnits(burned.toString(), 18));
+            statViews[1].setText(CoinUtils.formatUnits(recv0.toString(), decimals0));
+            statViews[2].setText(CoinUtils.formatUnits(recv1.toString(), decimals1));
+            statViews[3].setText(CoinUtils.formatUnits(lpBal.toString(), 18));
+            for (int i = 0; i < presets.length; i++) {
+                boolean active = presets[i] == percent[0];
+                chipViews[i].setTextColor(getResources().getColor(
+                        active ? R.color.quantumTeal : R.color.colorCommon3));
+            }
+        };
+        seek.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar sb, int progress, boolean fromUser) {
+                percent[0] = progress + 1;
+                refresh[0].run();
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar sb) { }
+            @Override public void onStopTrackingTouch(android.widget.SeekBar sb) { }
+        });
+        seek.setProgress(percent[0] - 1);
+        refresh[0].run();
 
         new AlertDialog.Builder(ctx)
                 .setTitle(jsonViewModel.lang("remove-liquidity", "Remove Liquidity"))
                 .setView(wrap)
-                .setPositiveButton(jsonViewModel.getOkByLangValues(), (d, w) -> {
-                    int pct;
-                    try {
-                        pct = Integer.parseInt(percentEditText.getText().toString().trim());
-                    } catch (Exception e) {
-                        pct = 0;
-                    }
-                    if (pct <= 0 || pct > 100) {
-                        GlobalMethods.ShowErrorDialog(ctx,
-                                jsonViewModel.getErrorTitleByLangValues(),
-                                jsonViewModel.err("invalidQuantity", "Enter a valid quantity."));
-                        return;
-                    }
-                    final int pctFinal = pct;
-                    runRemoveFlow(pos, pctFinal);
-                })
+                .setPositiveButton(jsonViewModel.lang("remove-approve-cta", "Approve & remove"),
+                        (d, w) -> runRemoveFlow(pos, percent[0]))
                 .setNegativeButton(jsonViewModel.getCancelByLangValues(), (d, w) -> d.dismiss())
                 .show();
     }
