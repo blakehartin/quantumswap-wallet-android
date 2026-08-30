@@ -56,6 +56,12 @@ public class PoolsFragment extends Fragment {
     private TokenPickerController tokenAPicker;
     private TokenPickerController tokenBPicker;
 
+    // Web app poolExplorer: server pages of 20 with a sort toggle and a
+    // "Load all pairs" action when the Swap Read API serves the release.
+    private int poolsPage = 1;
+    private String poolsSort = "liquidity";
+    private boolean poolsAll;
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public static PoolsFragment newInstance() {
@@ -135,22 +141,38 @@ public class PoolsFragment extends Fragment {
     }
 
     private void loadPools() {
+        loadPools(poolsPage, poolsAll);
+    }
+
+    private void loadPools(int page, boolean all) {
         try {
             setBusy(true);
             JSONObject payload = DexPayloads.base();
+            payload.put("page", page);
+            payload.put("sort", poolsSort);
+            if (all) payload.put("all", true);
             KeyViewModel.getBridge().dexCallAsync("liquidityListPools", payload,
                     uiCallback(data -> {
                         setBusy(false);
-                        renderPools(data.optJSONArray("pools"));
+                        renderPools(data);
                     }));
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void renderPools(JSONArray pools) {
+    private void renderPools(JSONObject data) {
+        JSONArray pools = data.optJSONArray("pools");
+        boolean api = "api".equals(data.optString("source", ""));
+        poolsPage = Math.max(1, data.optInt("page", 1));
+        int pageCount = data.optInt("pageCount", 1);
+        int total = data.optInt("totalItems", pools == null ? 0 : pools.length());
         poolsLayout.removeAllViews();
+        if (api) poolsLayout.addView(buildPoolsToolbar(data.optLong("indexedBlock", 0)));
         if (pools == null || pools.length() == 0) {
+            emptyTextView.setText(api
+                    ? jsonViewModel.lang("pools-empty-api", "No pools found yet. Try loading all pairs, or create one.")
+                    : jsonViewModel.lang("no-pools", "No pools yet."));
             emptyTextView.setVisibility(View.VISIBLE);
             return;
         }
@@ -160,6 +182,82 @@ public class PoolsFragment extends Fragment {
             if (pool == null) continue;
             poolsLayout.addView(buildPoolRow(pool));
         }
+        if (api && !poolsAll && pageCount > 1) poolsLayout.addView(buildPager(poolsPage, pageCount, total));
+    }
+
+    /** "Indexed at block N" + sort toggle + "Load all pairs". */
+    private View buildPoolsToolbar(long indexedBlock) {
+        Context ctx = getContext();
+        LinearLayout bar = new LinearLayout(ctx);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(0, 0, 0, dp(6));
+
+        TextView indexed = new TextView(ctx);
+        indexed.setText(jsonViewModel.lang("pools-indexed-at", "Indexed at block [BLOCK]")
+                .replace("[BLOCK]", String.valueOf(indexedBlock)));
+        indexed.setTextSize(12);
+        indexed.setTextColor(getResources().getColor(R.color.colorCommon3));
+        bar.addView(indexed);
+
+        LinearLayout actions = new LinearLayout(ctx);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        TextView sortToggle = linkText("liquidity".equals(poolsSort)
+                ? jsonViewModel.lang("pools-sort-liquidity", "Sort: liquidity")
+                : jsonViewModel.lang("pools-sort-newest", "Sort: newest"));
+        sortToggle.setOnClickListener(v -> {
+            poolsSort = "liquidity".equals(poolsSort) ? "newest" : "liquidity";
+            poolsAll = false;
+            loadPools(1, false);
+        });
+        actions.addView(sortToggle);
+        if (!poolsAll) {
+            TextView loadAll = linkText(jsonViewModel.lang("pools-load-all", "Load all pairs"));
+            loadAll.setPadding(dp(16), 0, 0, 0);
+            loadAll.setOnClickListener(v -> {
+                poolsAll = true;
+                loadPools(1, true);
+            });
+            actions.addView(loadAll);
+        }
+        bar.addView(actions);
+        return bar;
+    }
+
+    private View buildPager(int page, int pageCount, int total) {
+        Context ctx = getContext();
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(8), 0, dp(8));
+        TextView prev = linkText("\u2039 " + jsonViewModel.lang("previous", "Previous"));
+        prev.setEnabled(page > 1);
+        prev.setAlpha(page > 1 ? 1f : 0.4f);
+        prev.setOnClickListener(v -> { if (poolsPage > 1) loadPools(poolsPage - 1, false); });
+        TextView label = new TextView(ctx);
+        label.setText(jsonViewModel.lang("pools-page-of", "Page [PAGE] of [COUNT] · [TOTAL] pools")
+                .replace("[PAGE]", String.valueOf(page))
+                .replace("[COUNT]", String.valueOf(pageCount))
+                .replace("[TOTAL]", String.valueOf(total)));
+        label.setTextSize(12);
+        label.setTextColor(getResources().getColor(R.color.colorCommon3));
+        label.setPadding(dp(12), 0, dp(12), 0);
+        TextView next = linkText(jsonViewModel.lang("next", "Next") + " \u203a");
+        next.setEnabled(page < pageCount);
+        next.setAlpha(page < pageCount ? 1f : 0.4f);
+        next.setOnClickListener(v -> { if (poolsPage < pageCount) loadPools(poolsPage + 1, false); });
+        row.addView(prev);
+        row.addView(label);
+        row.addView(next);
+        return row;
+    }
+
+    private TextView linkText(String text) {
+        TextView t = new TextView(getContext());
+        t.setText(text);
+        t.setTextSize(13);
+        t.setTextColor(getResources().getColor(R.color.quantumTeal));
+        t.setPaintFlags(t.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        t.setClickable(true);
+        return t;
     }
 
     private View buildPoolRow(JSONObject pool) {
@@ -431,7 +529,11 @@ public class PoolsFragment extends Fragment {
                     if (getActivity() == null) return;
                     try {
                         JSONObject result = new JSONObject(jsonResult);
-                        onData.accept(result.getJSONObject("data"));
+                        JSONObject data = result.getJSONObject("data");
+                        // A Swap Read API request that failed before the
+                        // bridge fell back to the chain is toasted once.
+                        com.quantumswap.app.utils.SwapApiToast.showIfFallback(getContext(), jsonViewModel, data);
+                        onData.accept(data);
                     } catch (Exception e) {
                         failFlow(e.getMessage());
                     }

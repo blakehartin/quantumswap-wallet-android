@@ -152,6 +152,23 @@ public final class RecognizedTokens {
     public static final List<String> LISTED = Collections.unmodifiableList(
             Arrays.asList(HEISEN, Y2Q, LION, TIGER, CAT, PANTHER, WRAPPED_Q));
 
+    /**
+     * Tokens that burn or tax on transfer. The router has no fee-safe
+     * exact-output form, so the swap screen keeps pairs touching one of
+     * these exact-in (mirrors bridge.html
+     * FEE_ON_TRANSFER_TOKEN_CONTRACT_ADDRESSES). Lower-case entries;
+     * the membership test lower-cases its input.
+     */
+    private static final Set<String> FEE_ON_TRANSFER = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(HEISEN.toLowerCase(Locale.ROOT), Y2Q.toLowerCase(Locale.ROOT))));
+
+    /** {@code true} iff the contract is a listed fee-on-transfer token;
+     *  {@code null}, empty and the native sentinel return {@code false}. */
+    public static boolean isFeeOnTransfer(String contract) {
+        if (contract == null || contract.isEmpty()) return false;
+        return FEE_ON_TRANSFER.contains(contract.toLowerCase(Locale.ROOT));
+    }
+
     private RecognizedTokens() { }
 
     /**

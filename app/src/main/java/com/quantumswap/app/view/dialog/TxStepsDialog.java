@@ -84,6 +84,14 @@ public class TxStepsDialog {
         View build(LayoutInflater inflater);
     }
 
+    /** Sees the bridge echo of a successful estimate (never a fallback),
+     *  so a screen can react to what the estimate decided -- e.g. the
+     *  swap screen restarting when the bridge reports an exact-in
+     *  fallback. May dismiss the dialog. */
+    public interface EstimateListener {
+        void onEstimated(JSONObject extra);
+    }
+
     public static final class Step {
         public final String label;
         public final GasKind kind;
@@ -91,16 +99,25 @@ public class TxStepsDialog {
         public final EstimatePayload estimatePayload;
         public final TransactionReviewDialog.ReviewSpec reviewOverride;
         public final Run run;
+        public final EstimateListener onEstimated;
 
         public Step(String label, GasKind kind, boolean pairExists,
                     EstimatePayload estimatePayload,
                     TransactionReviewDialog.ReviewSpec reviewOverride, Run run) {
+            this(label, kind, pairExists, estimatePayload, reviewOverride, run, null);
+        }
+
+        public Step(String label, GasKind kind, boolean pairExists,
+                    EstimatePayload estimatePayload,
+                    TransactionReviewDialog.ReviewSpec reviewOverride, Run run,
+                    EstimateListener onEstimated) {
             this.label = label;
             this.kind = kind;
             this.pairExists = pairExists;
             this.estimatePayload = estimatePayload;
             this.reviewOverride = reviewOverride;
             this.run = run;
+            this.onEstimated = onEstimated;
         }
     }
 
@@ -327,6 +344,9 @@ public class TxStepsDialog {
                             notice += " " + vm.lang("gas-set-manually-hint",
                                     "Tap the gas icon to set the gas limit manually.");
                             setError(notice);
+                        } else if (extra != null && step.onEstimated != null) {
+                            step.onEstimated.onEstimated(extra);
+                            if (stale(id)) return;      // the listener may have dismissed
                         }
                     }
                     com.quantumswap.app.gas.GasIconPulse.stop(gasIcon);

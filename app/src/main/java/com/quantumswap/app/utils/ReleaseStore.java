@@ -38,10 +38,18 @@ public final class ReleaseStore {
 
     private static final String TAG = "ReleaseStore";
 
-    /** secureItems key: JSON array of user-defined releases. */
-    public static final String ITEM_RELEASES = "dexCustomReleases";
-    /** secureItems key: name of the currently active release. */
-    public static final String ITEM_ACTIVE = "dexActiveRelease";
+    /**
+     * Version suffix of the two secureItems keys below. Bumped when the
+     * persisted release shape changes (v2 added the Swap Read API
+     * fields); older keys are never read and never deleted, so an
+     * install simply starts over from the built-in release. Identical
+     * literals on iOS (ReleaseStore.itemReleases / itemActive).
+     */
+    public static final int RELEASES_STORE_VERSION = 2;
+    /** secureItems key: JSON array of user-defined releases (v2). */
+    public static final String ITEM_RELEASES = "dexCustomReleases2";
+    /** secureItems key: name of the currently active release (v2). */
+    public static final String ITEM_ACTIVE = "dexActiveRelease2";
 
     public static final class Release {
         public final String name;
@@ -49,23 +57,59 @@ public final class ReleaseStore {
         public final String factory;
         public final String router;
         public final boolean builtin;
+        /** Swap Read API base URL for this release; "" = off (RPC only). */
+        public final String apiUrl;
+        /** dexId served by that API for this release's factory; "" = off. */
+        public final String dexId;
 
         public Release(String name, String wq, String factory, String router, boolean builtin) {
+            this(name, wq, factory, router, builtin,
+                    SwapApiConfig.DEFAULT_API_URL, SwapApiConfig.DEFAULT_DEX_ID);
+        }
+
+        public Release(String name, String wq, String factory, String router, boolean builtin,
+                       String apiUrl, String dexId) {
             this.name = name;
             this.wq = wq;
             this.factory = factory;
             this.router = router;
             this.builtin = builtin;
+            this.apiUrl = apiUrl == null ? "" : apiUrl;
+            this.dexId = dexId == null ? "" : dexId;
+        }
+
+        public boolean swapApiEnabled() {
+            return !apiUrl.isEmpty() && !dexId.isEmpty();
         }
     }
 
-    /** Desktop BUILTIN_SWAP_RELEASES "Beta2" (src/lib/release.ts). */
+    /** Desktop BUILTIN_SWAP_RELEASES "Beta2" (src/lib/release.ts) plus
+     *  the public Swap Read API defaults (web app chain.ts). */
     public static final Release BUILTIN = new Release(
             "Beta2",
             "0x45BD01BE5EF8509D9dA183689eA7Faf647331c54c7C9801dE54c9EDE9Ac44D92",
             "0x95085766E20fCBf0106dC7037020Ca069e22080DBEF2615551Bab65D59a99754",
             "0xC3666584A70A707E5e929Ba9871083ED8f9528eCe7a56FdbA485272a645D861e",
-            true);
+            true,
+            SwapApiConfig.DEFAULT_API_URL,
+            SwapApiConfig.DEFAULT_DEX_ID);
+
+    /** Persisted-field rule (web app resolvePersistedField): absent ->
+     *  built-in default; present but "" -> explicitly off; present but
+     *  invalid -> default. */
+    static String persistedApiUrl(boolean present, @Nullable String raw) {
+        if (!present) return SwapApiConfig.DEFAULT_API_URL;
+        if (raw == null || raw.trim().isEmpty()) return "";
+        String clean = SwapApiConfig.sanitizeUrl(raw);
+        return clean.isEmpty() ? SwapApiConfig.DEFAULT_API_URL : clean;
+    }
+
+    static String persistedDexId(boolean present, @Nullable String raw) {
+        if (!present) return SwapApiConfig.DEFAULT_DEX_ID;
+        String t = raw == null ? "" : raw.trim();
+        if (t.isEmpty()) return "";
+        return SwapApiConfig.isValidDexId(t) ? t : SwapApiConfig.DEFAULT_DEX_ID;
+    }
 
     // ---------------------------------------------------------------
     // Validation (desktop release.ts constraints)
@@ -111,7 +155,9 @@ public final class ReleaseStore {
                         o.optString("wq", ""),
                         o.optString("factory", ""),
                         o.optString("router", ""),
-                        false);
+                        false,
+                        persistedApiUrl(o.has("apiUrl"), o.optString("apiUrl", "")),
+                        persistedDexId(o.has("dexId"), o.optString("dexId", "")));
                 if (isValidName(r.name) && isValidAddress(r.wq)
                         && isValidAddress(r.factory) && isValidAddress(r.router)) {
                     out.add(r);
@@ -140,15 +186,17 @@ public final class ReleaseStore {
     }
 
     /**
-     * Add the active release's contract overrides to a DEX bridge
-     * payload. Built-in release adds nothing (the bridge carries the
-     * same built-in addresses).
+     * Add the active release's Swap Read API config (every release) and
+     * contract overrides (custom releases only; the bridge carries the
+     * same built-in addresses) to a DEX bridge payload.
      */
     public static void applyActiveRelease(@Nullable SecureStorage secureStorage,
                                           @NonNull JSONObject payload) {
         Release active = readActive(secureStorage);
-        if (active.builtin) return;
         try {
+            payload.put("releaseApiUrl", active.apiUrl);
+            payload.put("releaseDexId", active.dexId);
+            if (active.builtin) return;
             payload.put("releaseWq", active.wq);
             payload.put("releaseFactory", active.factory);
             payload.put("releaseRouter", active.router);
@@ -169,6 +217,12 @@ public final class ReleaseStore {
                 || !isValidAddress(release.factory) || !isValidAddress(release.router)) {
             throw new IllegalArgumentException("invalid release");
         }
+        if (!release.apiUrl.isEmpty() && !release.apiUrl.equals(SwapApiConfig.sanitizeUrl(release.apiUrl))) {
+            throw new IllegalArgumentException("invalid release api url");
+        }
+        if (!release.dexId.isEmpty() && !SwapApiConfig.isValidDexId(release.dexId)) {
+            throw new IllegalArgumentException("invalid release dexId");
+        }
         for (Release existing : readAll(secureStorage)) {
             if (existing.name.equalsIgnoreCase(release.name.trim())) {
                 throw new IllegalArgumentException("duplicate release name");
@@ -185,6 +239,10 @@ public final class ReleaseStore {
         o.put("wq", release.wq.trim());
         o.put("factory", release.factory.trim());
         o.put("router", release.router.trim());
+        // Always written: "" means the user switched the API off for
+        // this release (absent would mean "use the default").
+        o.put("apiUrl", release.apiUrl);
+        o.put("dexId", release.dexId);
         arr.put(o);
         payload.secureItems.put(ITEM_RELEASES, arr.toString());
         try {

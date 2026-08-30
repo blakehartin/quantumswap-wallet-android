@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * Native-coin swap contract: swapping FROM native Q, TO native Q, and
  * Q &lt;-&gt; WQ (wrap / unwrap).
  *
- * <p>QuantumSwap is a Uniswap-v2 DEX; the router trades the wrapped coin
+ * <p>QuantumSwap is a V2-style pair DEX; the router trades the wrapped coin
  * WQ. The UI lists native Q as the sentinel {@code "Q"}, which the bridge
  * maps to the release's WQ address for routing. The regression class this
  * suite pins: the bridge's only swap submit path called
@@ -142,6 +142,23 @@ public class SwapNativeBridgeContractTest {
                 body.contains("value: amounts.amountInWei"));
     }
 
+    @Test
+    public void removeLiquidityWithNativeSideUsesFeeOnTransferVariant() throws Exception {
+        String html = stripJs(read(BRIDGE_HTML));
+        String body = jsFunctionBody(html, "dexBuildRemoveLiquidityCall");
+        // removeLiquidityETH burns to the ROUTER, which receives the token minus
+        // any transfer fee and then forwards the pre-fee amount -- and reverts.
+        // The ...SupportingFeeOnTransferTokens form forwards its actual balance.
+        // Token/token removeLiquidity pays the user directly and needs no variant.
+        assertTrue("dexBuildRemoveLiquidityCall must use"
+                        + " removeLiquidityETHSupportingFeeOnTransferTokens for a WQ side so"
+                        + " a burn/tax-on-transfer token can be withdrawn from its WQ pool.",
+                body.contains("'removeLiquidityETHSupportingFeeOnTransferTokens'"));
+        assertFalse("dexBuildRemoveLiquidityCall must not emit the standard"
+                        + " removeLiquidityETH: it reverts for burn/tax-on-transfer tokens.",
+                body.contains("'removeLiquidityETH'"));
+    }
+
     // ---------------------------------------------------------------
     // bridge.html: wrap / unwrap, allowance short-circuit, route guard
     // ---------------------------------------------------------------
@@ -245,7 +262,13 @@ public class SwapNativeBridgeContractTest {
     public void langKeysPresentAndInParityWithIos() throws Exception {
         String lang = read(LANG);
         String[][] keys = {{"wrap", "Wrap"}, {"unwrap", "Unwrap"},
-                {"step-wrap", "Wrap"}, {"step-unwrap", "Unwrap"}};
+                {"step-wrap", "Wrap"}, {"step-unwrap", "Unwrap"},
+                {"swap-up-to", "up to"},
+                {"swap-exact-output-unavailable-fee-token",
+                        "Exact output is not available for tokens that burn or tax on transfer. Enter the quantity to swap in the From field."},
+                {"swap-exact-output-fallback",
+                        "Exact output is not available for this token; swapping the exact input instead. Review the quote and tap Next again."},
+                {"swapMaxSoldExceedsBalance", "Up to [QUANTITY] could be sold, which exceeds your balance."}};
         for (String[] kv : keys) {
             assertEquals("en_us.json must define \"" + kv[0] + "\"", kv[1], langValue(lang, kv[0]));
         }
@@ -269,6 +292,169 @@ public class SwapNativeBridgeContractTest {
                         + " iOS repos (shared DEX bridge).",
                 Files.readAllBytes(locate(BRIDGE_HTML, true).toPath()),
                 Files.readAllBytes(ios.toPath()));
+    }
+
+    // ---------------------------------------------------------------
+    // Exact-output swaps + fee/burn-on-transfer guard
+    // ---------------------------------------------------------------
+    //
+    // Contract: the side the user last edited decides the swap form. From
+    // edited -> exact-in (fee-safe variants); To edited -> exact-out
+    // (...ForExact... variants with amountInMax from slippage). No fee-safe
+    // exact-out form exists, so a path touching a token that burns or taxes
+    // on transfer (static list) falls back to exact-in with the quoted
+    // input, and so does an exact-out whose pre-flight estimate reverts.
+    // The client learns the fallback from the estimate result and explains.
+
+    @Test
+    public void builderEmitsExactOutputVariants() throws Exception {
+        String html = stripJs(read(BRIDGE_HTML));
+        String body = jsFunctionBody(html, "dexBuildSwapCall");
+        for (String needle : new String[] {"'swapETHForExactTokens'", "'swapTokensForExactETH'",
+                "'swapTokensForExactTokens'", "'exactOut'", "value: amounts.amountInMaxWei",
+                "dexIsFeeOnTransferAddress", "provider.estimateGas(", "'reverted'", "'feeToken'"}) {
+            assertTrue("dexBuildSwapCall must build true exact-output calls for lastChanged"
+                            + " 'to', with amountInMax as the native value, a fee-token"
+                            + " guard and a pre-flight fallback; missing: " + needle,
+                    body.contains(needle));
+        }
+    }
+
+    @Test
+    public void bridgeDefinesMaxSlippageAndFeeTokenList() throws Exception {
+        String html = stripJs(read(BRIDGE_HTML));
+        assertTrue("bridge.html must define dexMaxWeiWithSlippage (maximum sold for exact-out).",
+                html.contains("function dexMaxWeiWithSlippage("));
+        int i = html.indexOf("var FEE_ON_TRANSFER_TOKEN_CONTRACT_ADDRESSES = [");
+        assertTrue("bridge.html must define FEE_ON_TRANSFER_TOKEN_CONTRACT_ADDRESSES.", i >= 0);
+        String list = html.substring(i, html.indexOf("];", i));
+        for (String addr : new String[] {com.quantumswap.app.tokens.RecognizedTokens.HEISEN,
+                com.quantumswap.app.tokens.RecognizedTokens.Y2Q}) {
+            assertTrue("The fee-on-transfer list must contain the registry address " + addr,
+                    list.toLowerCase().contains(addr.toLowerCase()));
+        }
+    }
+
+    @Test
+    public void estimateReportsSwapModeAndQuoteReturnsMax() throws Exception {
+        String html = stripJs(read(BRIDGE_HTML));
+        String est = jsHandlerBody(html, "dexEstimateGas");
+        assertTrue("dexEstimateGas must report swapMode / fallback / fallbackReason so the"
+                        + " client can explain an exact-in fallback.",
+                est.contains("swapMode") && est.contains("fallbackReason"));
+        String quote = jsHandlerBody(html, "swapGetAmountsIn");
+        assertTrue("swapGetAmountsIn must also return amountInMax (from slippagePercent) so"
+                        + " the client can size the allowance and review rows.",
+                quote.contains("amountInMax"));
+    }
+
+    @Test
+    public void swapFragmentSendsRealLastChanged() throws Exception {
+        String src = stripJava(read(SWAP_FRAGMENT));
+        String args = javaMethodBody(src, "private void putSwapArgs(");
+        assertFalse("putSwapArgs must not hard-code lastChanged \"from\": the side the user"
+                        + " last edited decides exact-in vs exact-out.",
+                args.contains("\"lastChanged\", \"from\""));
+        assertTrue("putSwapArgs must send amountOut for exact-out swaps.",
+                args.contains("\"amountOut\""));
+        for (String needle : new String[] {"lastEditedFromSide", "isFeeOnTransfer(",
+                "amountOutEditText.setEnabled("}) {
+            assertTrue("SwapFragment must track the last-edited side and lock the To field"
+                            + " for fee-on-transfer pairs; missing: " + needle,
+                    src.contains(needle));
+        }
+    }
+
+    @Test
+    public void recognizedTokensFlagFeeOnTransfer() throws Exception {
+        java.lang.reflect.Method m;
+        try {
+            m = com.quantumswap.app.tokens.RecognizedTokens.class.getMethod("isFeeOnTransfer", String.class);
+        } catch (NoSuchMethodException e) {
+            fail("RecognizedTokens must expose isFeeOnTransfer(String): the swap screen locks"
+                    + " exact-output for tokens that burn or tax on transfer.");
+            return;
+        }
+        assertEquals(Boolean.TRUE, m.invoke(null, com.quantumswap.app.tokens.RecognizedTokens.HEISEN));
+        assertEquals(Boolean.TRUE, m.invoke(null, com.quantumswap.app.tokens.RecognizedTokens.Y2Q.toUpperCase()));
+        assertEquals(Boolean.FALSE, m.invoke(null, com.quantumswap.app.tokens.RecognizedTokens.LION));
+        assertEquals(Boolean.FALSE, m.invoke(null, "Q"));
+        assertEquals(Boolean.FALSE, m.invoke(null, (String) null));
+    }
+
+    @Test
+    public void stepsDialogOffersEstimateHook() throws Exception {
+        String src = stripJava(read("src/main/java/com/quantumswap/app/view/dialog/TxStepsDialog.java"));
+        assertTrue("TxStepsDialog.Step must offer an EstimateListener so the swap screen can"
+                        + " react to an exact-in fallback reported by the estimate.",
+                src.contains("interface EstimateListener") && src.contains("step.onEstimated"));
+    }
+
+    @Test
+    public void noVendorNameInComments() throws Exception {
+        // The needle is assembled so this file cannot trip on itself.
+        String needle = "uni" + "swap";
+        java.util.List<String> hits = new java.util.ArrayList<>();
+        for (String root : new String[] {"src/main/java", "src/main/assets", "src/test/java"}) {
+            File dir = locate(root, true);
+            scanComments(dir, needle, hits);
+        }
+        assertTrue("No comment may mention the vendor DEX; found: " + hits, hits.isEmpty());
+    }
+
+    private static void scanComments(File dir, String needle, java.util.List<String> hits) throws Exception {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File f : children) {
+            if (f.isDirectory()) { scanComments(f, needle, hits); continue; }
+            String name = f.getName();
+            if (!(name.endsWith(".java") || name.endsWith(".html") || name.endsWith(".xml"))) continue;
+            String s = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            if (extractComments(s, !name.endsWith(".xml")).toLowerCase().contains(needle)) hits.add(f.getPath());
+        }
+    }
+
+    /** Linear scan (regex recursion overflows on the minified SDK lines):
+     *  collects block, line and markup comments, skipping string and
+     *  char literals so code such as an error sanitizer is not a hit. */
+    private static String extractComments(String s, boolean code) {
+        StringBuilder out = new StringBuilder();
+        int n = s.length(), i = 0;
+        while (i < n) {
+            char c = s.charAt(i);
+            if (code && (c == '"' || c == '\'' || c == '`')) {
+                int j = i + 1;
+                while (j < n && s.charAt(j) != c && (c == '`' || s.charAt(j) != '\n')) {
+                    if (s.charAt(j) == '\\') j++;
+                    j++;
+                }
+                i = j + 1;
+                continue;
+            }
+            if (code && s.startsWith("/*", i)) {
+                int j = s.indexOf("*/", i + 2);
+                if (j < 0) j = n;
+                out.append(s, i, Math.min(n, j + 2)).append('\n');
+                i = j + 2;
+                continue;
+            }
+            if (code && s.startsWith("//", i)) {
+                int j = s.indexOf('\n', i);
+                if (j < 0) j = n;
+                out.append(s, i, j).append('\n');
+                i = j;
+                continue;
+            }
+            if (s.startsWith("<!--", i)) {
+                int j = s.indexOf("-->", i + 4);
+                if (j < 0) j = n;
+                out.append(s, i, Math.min(n, j + 3)).append('\n');
+                i = j + 3;
+                continue;
+            }
+            i++;
+        }
+        return out.toString();
     }
 
     // ---------------------------------------------------------------

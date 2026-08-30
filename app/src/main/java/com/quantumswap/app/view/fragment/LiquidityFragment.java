@@ -161,25 +161,100 @@ public class LiquidityFragment extends Fragment {
             KeyViewModel.getBridge().dexCallAsync("liquidityListPositions", payload,
                     uiCallback(data -> {
                         setBusy(false);
-                        renderPositions(data.optJSONArray("positions"));
+                        renderPositions(data);
                     }));
         } catch (Exception e) {
             failFlow(e.getMessage());
         }
     }
 
-    private void renderPositions(JSONArray positions) {
+    private void renderPositions(JSONObject data) {
+        JSONArray positions = data.optJSONArray("positions");
+        boolean api = "api".equals(data.optString("source", ""));
         positionsLayout.removeAllViews();
+        if (api) {
+            positionsLayout.addView(noteText(jsonViewModel.lang("pools-indexed-at", "Indexed at block [BLOCK]")
+                    .replace("[BLOCK]", String.valueOf(data.optLong("indexedBlock", 0)))));
+            if (data.optBoolean("capped", false)) {
+                positionsLayout.addView(noteText(jsonViewModel.lang("positions-capped",
+                        "Showing the first 1000 positions tracked for this account.")));
+            }
+        }
         if (positions == null || positions.length() == 0) {
+            noPositionsTextView.setText(api
+                    ? jsonViewModel.lang("positions-empty-api",
+                            "No liquidity positions found for this account on the active release.")
+                    : jsonViewModel.lang("no-positions", "You have no liquidity positions."));
             noPositionsTextView.setVisibility(View.VISIBLE);
-            return;
+        } else {
+            noPositionsTextView.setVisibility(View.GONE);
+            for (int i = 0; i < positions.length(); i++) {
+                final JSONObject pos = positions.optJSONObject(i);
+                if (pos == null) continue;
+                positionsLayout.addView(buildPositionRow(pos));
+            }
         }
-        noPositionsTextView.setVisibility(View.GONE);
-        for (int i = 0; i < positions.length(); i++) {
-            final JSONObject pos = positions.optJSONObject(i);
-            if (pos == null) continue;
-            positionsLayout.addView(buildPositionRow(pos));
+        if (api) loadPairsCreated();
+    }
+
+    /** Web app positions.ts "Pools you created (N)" card (API only). */
+    private void loadPairsCreated() {
+        try {
+            JSONObject payload = DexPayloads.base();
+            payload.put("ownerAddress", walletAddress);
+            payload.put("page", 1);
+            KeyViewModel.getBridge().dexCallAsync("liquidityListPairsCreated", payload,
+                    uiCallback(data -> {
+                        if (getView() == null) return;
+                        JSONArray pools = data.optJSONArray("pools");
+                        if (pools == null || pools.length() == 0) return;
+                        TextView title = new TextView(getContext());
+                        title.setText(jsonViewModel.lang("positions-pools-created", "Pools you created")
+                                + " (" + data.optInt("totalItems", pools.length()) + ")");
+                        title.setTypeface(null, Typeface.BOLD);
+                        title.setTextSize(14);
+                        title.setTextColor(getResources().getColor(R.color.colorCommon6));
+                        title.setPadding(0, dp(14), 0, dp(4));
+                        positionsLayout.addView(title);
+                        for (int i = 0; i < pools.length(); i++) {
+                            JSONObject pool = pools.optJSONObject(i);
+                            if (pool != null) positionsLayout.addView(buildCreatedRow(pool));
+                        }
+                    }));
+        } catch (Exception ignore) {
+            // Informational card only; the positions list is already shown.
         }
+    }
+
+    private View buildCreatedRow(JSONObject pool) {
+        Context ctx = getContext();
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, dp(6), 0, dp(6));
+        String sym0 = sanitize(pool.optString("symbol0", ""));
+        String sym1 = sanitize(pool.optString("symbol1", ""));
+        TextView pairText = new TextView(ctx);
+        com.quantumswap.app.view.widget.ExplorerLinks.setPairLabel(pairText,
+                sym0.isEmpty() ? shortAddr(pool.optString("token0", "")) : sym0, pool.optString("token0", ""),
+                sym1.isEmpty() ? shortAddr(pool.optString("token1", "")) : sym1, pool.optString("token1", ""));
+        pairText.setTextSize(14);
+        pairText.setTextColor(getResources().getColor(R.color.colorCommon6));
+        row.addView(pairText);
+        TextView addrText = new TextView(ctx);
+        addrText.setText(shortAddr(pool.optString("pairAddress", "")));
+        addrText.setTextSize(12);
+        addrText.setTextColor(getResources().getColor(R.color.colorCommon3));
+        row.addView(addrText);
+        return row;
+    }
+
+    private TextView noteText(String text) {
+        TextView t = new TextView(getContext());
+        t.setText(text);
+        t.setTextSize(12);
+        t.setTextColor(getResources().getColor(R.color.colorCommon3));
+        t.setPadding(0, 0, 0, dp(4));
+        return t;
     }
 
     private View buildPositionRow(final JSONObject pos) {
@@ -204,7 +279,7 @@ public class LiquidityFragment extends Fragment {
         row.addView(pairText);
 
         TextView lpText = new TextView(ctx);
-        // LP tokens are fixed 18-decimals (UniswapV2 semantics).
+        // LP tokens are fixed 18-decimals (pair contract semantics).
         lpText.setText(jsonViewModel.lang("lp-tokens", "LP tokens") + ": "
                 + CoinUtils.formatUnits(pos.optString("lpBalance", "0"), 18));
         lpText.setTextSize(13);
@@ -768,7 +843,11 @@ public class LiquidityFragment extends Fragment {
                     if (getActivity() == null) return;
                     try {
                         JSONObject result = new JSONObject(jsonResult);
-                        onData.accept(result.getJSONObject("data"));
+                        JSONObject data = result.getJSONObject("data");
+                        // A Swap Read API request that failed before the
+                        // bridge fell back to the chain is toasted once.
+                        com.quantumswap.app.utils.SwapApiToast.showIfFallback(getContext(), jsonViewModel, data);
+                        onData.accept(data);
                     } catch (Exception e) {
                         failFlow(e.getMessage());
                     }

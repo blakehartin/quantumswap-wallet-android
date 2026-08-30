@@ -283,6 +283,15 @@
                             android:textColorHint="@color/colorMutedSecondaryText"
                             android:background="@drawable/text_input_selector" />
 
+                        <TextView
+                            android:id="@+id/textView_swap_exact_out_hint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textSize="12dp"
+                            android:textColor="@color/colorMutedSecondaryText"
+                            android:visibility="gone" />
+
                     </LinearLayout>
 
                     <TextView

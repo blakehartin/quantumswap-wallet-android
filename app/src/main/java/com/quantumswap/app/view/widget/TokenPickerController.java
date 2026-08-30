@@ -93,6 +93,7 @@ public class TokenPickerController {
     private String resolvedCustomAddress;
     private String resolvedCustomSymbol;
     private int resolvedCustomDecimals = 18;
+    private boolean resolvedCustomFeeOnTransfer;
 
     public TokenPickerController(Context context, Button trigger, EditText customField,
                                  String walletAddress, String customLabel) {
@@ -402,9 +403,23 @@ public class TokenPickerController {
     /** Cache bridge-resolved metadata for the current custom or
      *  placeholder address. */
     public void setResolvedMeta(String address, String symbol, int decimals) {
+        setResolvedMeta(address, symbol, decimals, false);
+    }
+
+    /** As above, with the Swap Read API's fee-on-transfer observation
+     *  (display only; the exact-output lock uses the static registry). */
+    public void setResolvedMeta(String address, String symbol, int decimals, boolean feeOnTransfer) {
         resolvedCustomAddress = address == null ? null : address.toLowerCase(Locale.ROOT);
         resolvedCustomSymbol = symbol;
         resolvedCustomDecimals = decimals;
+        resolvedCustomFeeOnTransfer = feeOnTransfer;
+    }
+
+    /** Static registry flag, or the API's observation for a resolved
+     *  custom token. */
+    public boolean isFeeOnTransfer() {
+        return com.quantumswap.app.tokens.RecognizedTokens.isFeeOnTransfer(getTokenValue())
+                || (metaResolvedForCurrentSelection() && resolvedCustomFeeOnTransfer);
     }
 
     private boolean metaResolvedForCurrentSelection() {

@@ -143,6 +143,39 @@
                         android:textColorHint="@color/colorMutedSecondaryText"
                         android:background="@drawable/text_input_selector" />
 
+                    <EditText
+                        android:id="@+id/editText_releases_api_url"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="textUri"
+                        android:maxLength="200"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <EditText
+                        android:id="@+id/editText_releases_dex_id"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="64"
+                        android:textSize="13dp"
+                        android:textColor="@color/colorCommon6"
+                        android:textColorHint="@color/colorMutedSecondaryText"
+                        android:background="@drawable/text_input_selector" />
+
+                    <TextView
+                        android:id="@+id/textView_releases_api_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textSize="12dp"
+                        android:textColor="@color/colorCommon3"
+                        android:visibility="gone" />
+
                     <TextView
                         android:id="@+id/textView_releases_status"
                         android:layout_width="match_parent"

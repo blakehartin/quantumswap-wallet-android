@@ -22,6 +22,7 @@ import com.quantumswap.app.utils.DexPayloads;
 import com.quantumswap.app.utils.GlobalMethods;
 import com.quantumswap.app.utils.ReleaseStore;
 import com.quantumswap.app.gas.GasKind;
+import com.quantumswap.app.tokens.RecognizedTokens;
 import com.quantumswap.app.view.dialog.TransactionReviewDialog;
 import com.quantumswap.app.view.dialog.TxStepsDialog;
 import com.quantumswap.app.view.widget.TokenPickerController;
@@ -65,6 +66,26 @@ public class SwapFragment extends Fragment {
     private ProgressBar progress;
 
     private String lastQuotedAmountOut;
+    /** Which side the user typed last (web-app lastEdited): From ->
+     *  exact-in, To -> exact-out. Wrap / unwrap and fee-on-transfer
+     *  pairs are always exact-in, see {@link #isExactOut()}. */
+    private boolean lastEditedFromSide = true;
+    /** Exact-out quote: the required input and the most that may be
+     *  spent (quote plus slippage), as returned by swapGetAmountsIn. */
+    private String lastQuotedAmountIn;
+    private String lastQuotedAmountInMax;
+    /** Set when the estimate reported an exact-in fallback: the steps
+     *  dialog closes and the close handler re-quotes exact-in from the
+     *  quoted input instead of clearing the amounts. */
+    private boolean restartAsExactIn;
+    private TextView exactOutHintTextView;
+    /** The path the last quote priced (web-app routePath): sent with the
+     *  swap payload so estimate and submit build the same route. */
+    private JSONArray lastQuotedPath;
+    /** 'router' (re-quoted on-chain) or 'api-estimate' (indexed reserves). */
+    private String lastQuoteSource = "";
+    private long lastQuoteIndexedBlock;
+    private TextView quoteSourceTextView;
     private boolean flowInFlight;
     // Guards the bidirectional quote wiring (desktop swapQuantityUpdating):
     // programmatic writes to one amount field must not re-trigger the
@@ -112,6 +133,9 @@ public class SwapFragment extends Fragment {
         statusTextView = view.findViewById(R.id.textView_swap_status);
         nextButton = view.findViewById(R.id.button_swap_next);
         progress = view.findViewById(R.id.progress_swap);
+        exactOutHintTextView = view.findViewById(R.id.textView_swap_exact_out_hint);
+        exactOutHintTextView.setText(jsonViewModel.lang("swap-exact-output-unavailable-fee-token",
+                "Exact output is not available for tokens that burn or tax on transfer. Enter the quantity to swap in the From field."));
 
         title.setText(jsonViewModel.lang("swap", "Swap"));
         fromLabel.setText(jsonViewModel.lang("swap-from-token", "From token"));
@@ -159,6 +183,7 @@ public class SwapFragment extends Fragment {
             scheduleQuote(true);
         });
         toBalanceTextView.setOnClickListener(v -> {
+            if (exactOutLocked()) return;
             setAmountSilently(amountOutEditText, toBalanceTextView.getText().toString());
             scheduleQuote(false);
         });
@@ -166,6 +191,15 @@ public class SwapFragment extends Fragment {
         // Bidirectional debounced quoting (desktop 400ms debounce).
         amountInEditText.addTextChangedListener(quoteWatcher(true));
         amountOutEditText.addTextChangedListener(quoteWatcher(false));
+        // Slippage feeds the exact-out maximum, so re-quote the last side.
+        slippageEditText.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) {
+                if (text(amountInEditText).isEmpty() && text(amountOutEditText).isEmpty()) return;
+                scheduleQuote(lastEditedFromSide);
+            }
+        });
 
         flipButton.setOnClickListener(v -> flipTokens());
         backArrow.setOnClickListener(v -> mListener.onSwapCompleteByBackArrow());
@@ -211,6 +245,12 @@ public class SwapFragment extends Fragment {
      *  selected, then route-check when they are. */
     private void onTokensChanged() {
         lastQuotedAmountOut = null;
+        lastQuotedAmountIn = null;
+        lastQuotedAmountInMax = null;
+        lastEditedFromSide = true;
+        lastQuotedPath = null;
+        lastQuoteSource = "";
+        updateQuoteSourceNote();
         setAmountSilently(amountInEditText, "");
         setAmountSilently(amountOutEditText, "");
         routeTextView.setVisibility(View.GONE);
@@ -221,6 +261,11 @@ public class SwapFragment extends Fragment {
         fromBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
         toBoxView.setVisibility(ready ? View.VISIBLE : View.GONE);
         flipRowView.setVisibility(ready ? View.VISIBLE : View.GONE);
+        // A fee-on-transfer side has no exact-output form: the To field
+        // only shows the estimate and the hint says why.
+        boolean locked = exactOutLocked();
+        amountOutEditText.setEnabled(!locked);
+        exactOutHintTextView.setVisibility(locked && ready ? View.VISIBLE : View.GONE);
         final String mode = wrapMode();
         nextButton.setText(modeLabel(mode));
         if (!ready || from.equalsIgnoreCase(to)) return;
@@ -281,11 +326,14 @@ public class SwapFragment extends Fragment {
         String from = fromPicker.getTokenValue();
         String to = toPicker.getTokenValue();
         if (from.isEmpty() || to.isEmpty() || from.equalsIgnoreCase(to)) return;
+        lastEditedFromSide = fromChanged || wrapMode() != null;
         String amount = text(fromChanged ? amountInEditText : amountOutEditText);
         if (amount.isEmpty() || !amount.matches("\\d*\\.?\\d+")
                 || Double.parseDouble(amount) <= 0) {
             setAmountSilently(fromChanged ? amountOutEditText : amountInEditText, "");
             lastQuotedAmountOut = null;
+            lastQuotedAmountIn = null;
+            lastQuotedAmountInMax = null;
             return;
         }
         if (wrapMode() != null) {      // web-app swap.ts: wrap / unwrap quotes 1:1
@@ -314,7 +362,8 @@ public class SwapFragment extends Fragment {
                         picker.setResolvedMeta(
                                 data.optString("contractAddress", addr),
                                 data.optString("symbol", ""),
-                                data.optInt("decimals", 18));
+                                data.optInt("decimals", 18),
+                                data.optBoolean("feeOnTransfer", false));
                         onDone.run();
                     }));
         } catch (Exception e) {
@@ -338,20 +387,54 @@ public class SwapFragment extends Fragment {
                         uiCallback(data -> {
                             setBusy(false);
                             lastQuotedAmountOut = data.optString("amountOut", "");
+                            lastQuotedAmountIn = null;
+                            lastQuotedAmountInMax = null;
+                            rememberQuoteMeta(data);
                             setAmountSilently(amountOutEditText, lastQuotedAmountOut);
                         }));
             } else {
                 payload.put("amountOut", text(amountOutEditText));
+                payload.put("slippagePercent", slippagePercent());
                 KeyViewModel.getBridge().dexCallAsync("swapGetAmountsIn", payload,
                         uiCallback(data -> {
                             setBusy(false);
                             lastQuotedAmountOut = text(amountOutEditText);
-                            setAmountSilently(amountInEditText,
-                                    data.optString("amountIn", ""));
+                            lastQuotedAmountIn = data.optString("amountIn", "");
+                            lastQuotedAmountInMax = data.optString("amountInMax", lastQuotedAmountIn);
+                            rememberQuoteMeta(data);
+                            setAmountSilently(amountInEditText, lastQuotedAmountIn);
                         }));
             }
         } catch (Exception e) {
             failFlow(e.getMessage());
+        }
+    }
+
+    private void rememberQuoteMeta(JSONObject data) {
+        lastQuotedPath = data.optJSONArray("path");
+        lastQuoteSource = data.optString("source", "");
+        lastQuoteIndexedBlock = data.optLong("indexedBlock", 0);
+        updateQuoteSourceNote();
+    }
+
+    /** Web app appendQuoteSource: say so when the number came from the
+     *  indexed reserves rather than the router. */
+    private void updateQuoteSourceNote() {
+        if (routeTextView == null) return;
+        if (quoteSourceTextView == null) {
+            ViewGroup parent = (ViewGroup) routeTextView.getParent();
+            if (parent == null) return;
+            quoteSourceTextView = new TextView(getContext());
+            quoteSourceTextView.setTextSize(12);
+            quoteSourceTextView.setTextColor(routeTextView.getTextColors());
+            parent.addView(quoteSourceTextView, parent.indexOfChild(routeTextView) + 1);
+        }
+        boolean show = "api-estimate".equals(lastQuoteSource);
+        quoteSourceTextView.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) {
+            quoteSourceTextView.setText(jsonViewModel.lang("swap-quote-source-indexed",
+                    "Estimated from indexed reserves · block [BLOCK]")
+                    .replace("[BLOCK]", String.valueOf(lastQuoteIndexedBlock)));
         }
     }
 
@@ -426,7 +509,9 @@ public class SwapFragment extends Fragment {
             JSONObject payload = DexPayloads.base();
             payload.put("fromTokenValue", fromPicker.getTokenValue());
             payload.put("fromDecimals", fromPicker.getDecimals());
-            payload.put("requiredAmount", text(amountInEditText));
+            // Exact-out lets the router pull up to amountInMax, so that is
+            // the allowance to check (and to approve).
+            payload.put("requiredAmount", isExactOut() ? maxInput() : text(amountInEditText));
             payload.put("ownerAddress", walletAddress);
             KeyViewModel.getBridge().dexCallAsync("swapCheckAllowance", payload,
                     uiCallback(data -> {
@@ -447,6 +532,11 @@ public class SwapFragment extends Fragment {
         final String toSym = sanitizeSymbol(toPicker.getSymbol());
         final String amountIn = text(amountInEditText);
         final String amountOut = lastQuotedAmountOut == null ? "" : lastQuotedAmountOut;
+        final boolean exactOut = isExactOut();
+        // Exact-out spends at most amountInMax for exactly amountOut: the
+        // review, the approval and the native value all use the maximum.
+        final String amountInMax = exactOut ? maxInput() : amountIn;
+        final String upTo = exactOut ? jsonViewModel.lang("swap-up-to", "up to") + " " : "";
         final ReleaseStore.Release release = ReleaseStore.readActive(KeyViewModel.getSecureStorage());
         final String fromContract = resolveTokenContract(fromPicker.getTokenValue(), release);
         final String toContract = resolveTokenContract(toPicker.getTokenValue(), release);
@@ -470,8 +560,8 @@ public class SwapFragment extends Fragment {
                 .toTokenContract(toContract)
                 .fromAddress(walletAddress)
                 .toAddress(mode == null ? release.router : release.wq)
-                .quantityValue(fromNative ? amountIn : "0")
-                .tokenQuantityValue(amountIn + " " + fromSym + " "
+                .quantityValue(fromNative ? amountInMax : "0")
+                .tokenQuantityValue(upTo + amountInMax + " " + fromSym + " "
                         + jsonViewModel.lang("swap-for", "for") + " " + amountOut + " " + toSym)
                 .networkText(TransactionReviewDialog.networkText(jsonViewModel));
 
@@ -512,7 +602,7 @@ public class SwapFragment extends Fragment {
                     .toAddress(fromContract)
                     .quantityValue("0")
                     .tokenQuantityLabelKey("approval-token-quantity")
-                    .tokenQuantityValue(amountIn + " " + fromSym);
+                    .tokenQuantityValue(amountInMax + " " + fromSym);
             steps.add(new TxStepsDialog.Step(
                     jsonViewModel.lang("approve", "Approve") + " " + fromSym,
                     GasKind.APPROVE, true,
@@ -520,7 +610,7 @@ public class SwapFragment extends Fragment {
                         JSONObject p = new JSONObject();
                         p.put("fromTokenValue", fromPicker.getTokenValue());
                         p.put("fromDecimals", fromPicker.getDecimals());
-                        p.put("amount", amountIn);
+                        p.put("amount", amountInMax);
                         return p;
                     },
                     approveReview,
@@ -531,7 +621,7 @@ public class SwapFragment extends Fragment {
                             TxStepsDialog.overlay(payload, chain);
                             payload.put("fromTokenValue", fromPicker.getTokenValue());
                             payload.put("fromDecimals", fromPicker.getDecimals());
-                            payload.put("amount", amountIn);
+                            payload.put("amount", amountInMax);
                             payload.put("gasLimit", gasLimit);
                             KeyViewModel.getBridge().dexCallAsync("swapSubmitApproval", payload,
                                     stepCallback(cb));
@@ -540,6 +630,11 @@ public class SwapFragment extends Fragment {
                         }
                     }));
         }
+        // Exact-out only: the bridge reports an exact-in fallback (listed
+        // fee-on-transfer token on the path, or the pre-flight reverted)
+        // in the estimate echo; close and restart exact-in.
+        TxStepsDialog.EstimateListener onSwapEstimated = null;
+        if (exactOut) onSwapEstimated = this::onSwapEstimated;
         steps.add(new TxStepsDialog.Step(
                 jsonViewModel.lang("swap", "Swap") + " " + fromSym + " -> " + toSym,
                 GasKind.SWAP, true,
@@ -563,7 +658,8 @@ public class SwapFragment extends Fragment {
                     } catch (Exception e) {
                         cb.fail(sanitizeError(e.getMessage()));
                     }
-                }));
+                },
+                onSwapEstimated));
         }
         flowInFlight = true;
         stepsDialog = new TxStepsDialog(getActivity(), jsonViewModel, walletAddress,
@@ -573,12 +669,33 @@ public class SwapFragment extends Fragment {
                     stepsDialog = null;
                     flowInFlight = false;
                     lastQuotedAmountOut = null;
+                    lastQuotedAmountIn = null;
+                    lastQuotedAmountInMax = null;
                     if (getView() == null) return;
+                    if (restartAsExactIn) {
+                        // The estimate reported an exact-in fallback: the From
+                        // field already holds the quoted input, so explain and
+                        // re-quote from it; Next then runs exact-in.
+                        restartAsExactIn = false;
+                        lastEditedFromSide = true;
+                        GlobalMethods.ShowErrorDialog(getContext(),
+                                jsonViewModel.lang("swap", "Swap"),
+                                jsonViewModel.lang("swap-exact-output-fallback",
+                                        "Exact output is not available for this token; swapping the exact input instead. Review the quote and tap Next again."));
+                        scheduleQuote(true);
+                        return;
+                    }
                     setAmountSilently(amountInEditText, "");
                     setAmountSilently(amountOutEditText, "");
                     updateBalances();
                 });
         stepsDialog.show();
+    }
+
+    private void onSwapEstimated(JSONObject extra) {
+        if (extra.optString("fallback", "").isEmpty()) return;
+        restartAsExactIn = true;
+        if (stepsDialog != null) stepsDialog.dismiss();
     }
 
     private TxStepsDialog stepsDialog;
@@ -645,8 +762,32 @@ public class SwapFragment extends Fragment {
         payload.put("fromDecimals", fromPicker.getDecimals());
         payload.put("toDecimals", toPicker.getDecimals());
         payload.put("amountIn", text(amountInEditText));
-        payload.put("lastChanged", "from");
+        payload.put("amountOut", text(amountOutEditText));
+        if (lastQuotedPath != null && lastQuotedPath.length() >= 2) payload.put("path", lastQuotedPath);
+        payload.put("lastChanged", isExactOut() ? "to" : "from");
         payload.put("slippagePercent", slippagePercent());
+    }
+
+    /** Either side burns or taxes on transfer: no fee-safe exact-output
+     *  form exists, so the pair stays exact-in and the To field is
+     *  estimate-only. */
+    private boolean exactOutLocked() {
+        return RecognizedTokens.isFeeOnTransfer(fromPicker.getTokenValue())
+                || RecognizedTokens.isFeeOnTransfer(toPicker.getTokenValue());
+    }
+
+    /** Web-app isExactOut: the To side was typed last, for a router
+     *  swap (wrap / unwrap is always 1:1) on a pair without a listed
+     *  fee-on-transfer token. */
+    private boolean isExactOut() {
+        return !lastEditedFromSide && wrapMode() == null && !exactOutLocked();
+    }
+
+    /** The most an exact-out swap may spend: the quoted maximum, or the
+     *  From field when no exact-out quote has landed yet. */
+    private String maxInput() {
+        return lastQuotedAmountInMax != null && !lastQuotedAmountInMax.isEmpty()
+                ? lastQuotedAmountInMax : text(amountInEditText);
     }
 
     // ---------------------------------------------------------------
@@ -679,6 +820,22 @@ public class SwapFragment extends Fragment {
                     jsonViewModel.getErrorTitleByLangValues(),
                     jsonViewModel.err("invalidQuantity", "Enter a valid quantity."));
             return false;
+        }
+        if (isExactOut()) {
+            // Exact-out may spend up to amountInMax; refuse before the dialog
+            // when the cached balance is known and clearly smaller.
+            String max = maxInput();
+            String bal = fromBalanceTextView.getText().toString().replace(",", "");
+            if (max.matches("\\d*\\.?\\d+") && bal.matches("\\d*\\.?\\d+")
+                    && new java.math.BigDecimal(bal).signum() > 0
+                    && new java.math.BigDecimal(max).compareTo(new java.math.BigDecimal(bal)) > 0) {
+                GlobalMethods.ShowErrorDialog(getContext(),
+                        jsonViewModel.getErrorTitleByLangValues(),
+                        jsonViewModel.err("swapMaxSoldExceedsBalance",
+                                "Up to [QUANTITY] could be sold, which exceeds your balance.")
+                                .replace("[QUANTITY]", max + " " + sanitizeSymbol(fromPicker.getSymbol())));
+                return false;
+            }
         }
         return true;
     }
@@ -754,7 +911,11 @@ public class SwapFragment extends Fragment {
                     if (getActivity() == null) return;
                     try {
                         JSONObject result = new JSONObject(jsonResult);
-                        onData.accept(result.getJSONObject("data"));
+                        JSONObject data = result.getJSONObject("data");
+                        // A Swap Read API request that failed before the
+                        // bridge fell back to the chain is toasted once.
+                        com.quantumswap.app.utils.SwapApiToast.showIfFallback(getContext(), jsonViewModel, data);
+                        onData.accept(data);
                     } catch (Exception e) {
                         failFlow(e.getMessage());
                     }
